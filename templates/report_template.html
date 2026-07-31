@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Academic GIS Report</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    body { font-family: "Times New Roman", serif; color: #111; line-height: 1.4; font-size: 12pt; }
+    h1, h2, h3 { margin: 0 0 10px; color: #0f2e4a; }
+    p { margin: 0 0 8px; text-align: justify; }
+    .page { page-break-after: always; }
+    .cover { display: flex; flex-direction: column; justify-content: center; min-height: 240mm; text-align: center; }
+    .meta { margin-top: 18mm; font-size: 13pt; }
+    .image-wrap { margin: 10px 0 8px; border: 1px solid #ccc; padding: 6px; text-align: center; }
+    .image-wrap img { width: 100%; height: auto; max-height: 170mm; object-fit: contain; }
+    .toc li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <section class="page cover">
+    <h1>GIS AND REMOTE SENSING ACADEMIC REPORT</h1>
+    <h2>Location-Based Spatial Analysis</h2>
+    <div class="meta">
+      <p><strong>Student Name:</strong> {{ full_name }}</p>
+      <p><strong>Matric Number:</strong> {{ student_id }}</p>
+      <p><strong>Department:</strong> {{ department }}</p>
+      <p><strong>Study Location:</strong> {{ location }}</p>
+      <p><strong>Date:</strong> {{ generated_date }}</p>
+    </div>
+  </section>
+
+  <section class="page">
+    <h2>Certification and Declaration</h2>
+    <p>This report is generated for academic learning and demonstration of geospatial analysis workflow including data capture, map interpretation, and methodological reporting practices.</p>
+    <p>I hereby declare that the interpretation and recommendations in this document were prepared according to institutional expectations for coursework and project formatting in Geographic Information Systems.</p>
+  </section>
+
+  <section class="page">
+    <h2>Table of Contents and List of Figures</h2>
+    <ol class="toc">
+      <li>Executive Summary</li>
+      <li>Introduction to GIS and Remote Sensing</li>
+      <li>Study Area Profile</li>
+      <li>Google Earth Satellite Analysis</li>
+      <li>QGIS Methodology and Data Processing</li>
+      <li>Spatial Results and Discussion</li>
+      <li>Conclusion and Recommendations</li>
+      <li>References</li>
+    </ol>
+    <h3>List of Figures</h3>
+    <p>Figure 1: Satellite View of {{ location }}</p>
+    <p>Figure 2: QGIS Workspace Composite for {{ location }}</p>
+  </section>
+
+  <section class="page"><h2>Executive Summary / Abstract</h2><p>This report presents a location-specific GIS assessment for {{ location }}. The study demonstrates the process of deriving geographic insight from remotely sensed imagery, visualization in desktop GIS, and technical interpretation suitable for undergraduate and diploma-level reporting standards.</p><p>Findings indicate that spatial context, observed land-use patterns, and visual interpretation can provide practical understanding for planning, environmental monitoring, and urban decision support.</p></section>
+
+  <section class="page"><h2>Section 1: Introduction to GIS and Remote Sensing Concepts</h2><p>Geographic Information Systems integrate hardware, software, and geospatial datasets to support acquisition, storage, analysis, and display of geographically referenced information. Remote sensing complements GIS by enabling Earth surface observation through satellites and aerial platforms.</p><p>This section outlines concepts of spectral resolution, spatial resolution, coordinate reference systems, raster-versus-vector models, and cartographic communication principles that guide scientific interpretation.</p></section>
+
+  <section class="page"><h2>Section 2: Study Area Profile</h2><p>The selected study area is <strong>{{ location }}</strong>. This area was evaluated using publicly accessible imagery resources and desktop GIS interpretation workflow. Location understanding includes surrounding land cover, infrastructure distribution, and potential environmental interactions.</p><p>Contextual analysis highlights terrain expression, settlement patterns, vegetation signatures, and potential anthropogenic activity visible from overhead imagery.</p></section>
+
+  <section class="page">
+    <h2>Section 3: Google Earth Satellite Analysis</h2>
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ satellite_image_b64 }}" alt="Satellite screenshot" />
+    </div>
+    <p><strong>Figure 1.</strong> Satellite imagery demonstrates spatial extent and dominant visual features for {{ location }}.</p>
+    <p>Image interpretation reveals texture variation and distribution patterns supporting qualitative assessment of built-up zones, open land, and transport connectivity.</p>
+  </section>
+
+  <section class="page">
+    <h2>Section 4: QGIS Methodology and Data Processing</h2>
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ qgis_image_b64 }}" alt="QGIS interface composite" />
+    </div>
+    <p><strong>Figure 2.</strong> QGIS workspace mock-up documenting layer arrangement, coordinate status, and map canvas output.</p>
+    <p>The methodology includes coordinate referencing, layer integration, map display control, and interpretation workflow documentation suitable for reproducible practical assignments.</p>
+  </section>
+
+  <section class="page"><h2>Section 5: Spatial Results and Discussion (Part I)</h2><p>Preliminary spatial results indicate distinct morphology of land parcels and mixed land-use zones. Visual differentiation suggests zones of residential concentration, transportation corridors, and potentially undeveloped peripheral regions.</p><p>Observed patterns align with expected anthropogenic expansion and highlight GIS utility for monitoring growth trends.</p></section>
+
+  <section class="page"><h2>Section 5: Spatial Results and Discussion (Part II)</h2><p>Comparative observations across the image indicate heterogeneity in surface cover. Such variation may be associated with topography, institutional development footprint, and localized environmental management practices.</p><p>The analysis confirms that satellite interpretation integrated with GIS display tools can strengthen evidence-based reporting.</p></section>
+
+  <section class="page"><h2>Section 6: Conclusion and Recommendations (Part I)</h2><p>This study confirms that location-specific satellite interpretation and GIS visualization provide reliable educational outputs for academic submissions. The generated report demonstrates a structured geospatial workflow from data capture to formal presentation.</p><p>It is recommended that future analyses include multi-temporal imagery for change detection and field validation for improved thematic accuracy.</p></section>
+
+  <section class="page"><h2>Section 6: Conclusion and Recommendations (Part II)</h2><p>Additional recommendations include integration of vectorized boundaries, supervised classification outputs, and statistical summaries to expand analytical depth. Where available, institution-specific geodatabases should be incorporated to strengthen contextual relevance.</p><p>The approach remains practical for mobile-first data intake and automated report preparation workflows.</p></section>
+
+  <section class="page"><h2>Appendix A: Method Checklist</h2><p>1. Location identification and coordinate targeting.</p><p>2. Satellite snapshot acquisition.</p><p>3. QGIS interface compositing and metadata annotation.</p><p>4. Structured narrative generation and page formatting.</p><p>5. PDF compilation and electronic delivery.</p></section>
+
+  <section class="page"><h2>References / Bibliography (APA Style)</h2><p>Burrough, P. A., McDonnell, R. A., & Lloyd, C. D. (2015). <em>Principles of Geographical Information Systems</em>. Oxford University Press.</p><p>Campbell, J. B., & Wynne, R. H. (2011). <em>Introduction to Remote Sensing</em>. Guilford Press.</p><p>Longley, P. A., Goodchild, M. F., Maguire, D. J., & Rhind, D. W. (2015). <em>Geographical Information Science and Systems</em>. Wiley.</p><p>QGIS Development Team. (2026). <em>QGIS Geographic Information System</em>. Open Source Geospatial Foundation.</p></section>
+</body>
+</html>

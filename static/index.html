@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GISCOPO Academic Report Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+</head>
+<body class="bg-slate-100">
+  <main class="max-w-lg mx-auto p-4 sm:p-6">
+    <div class="bg-white shadow rounded-xl p-5 space-y-4">
+      <h1 class="text-xl font-bold text-slate-800">Generate Your GIS Academic Report</h1>
+      <p class="text-sm text-slate-600">Fill in your details, complete payment, and get your personalized 15+ page PDF report by email.</p>
+
+      <form id="reportForm" class="space-y-3">
+        <input required name="full_name" placeholder="Full Name" class="w-full border rounded px-3 py-2" />
+        <input required name="student_id" placeholder="Matric / Student ID" class="w-full border rounded px-3 py-2" />
+        <input required name="department" placeholder="Department" class="w-full border rounded px-3 py-2" />
+        <input required type="email" name="email" placeholder="Target Email" class="w-full border rounded px-3 py-2" />
+        <input required name="location" placeholder="Location Name or Coordinates (lat,lng)" class="w-full border rounded px-3 py-2" />
+        <button type="submit" class="w-full bg-indigo-600 text-white rounded px-4 py-2 font-semibold">Pay & Generate Report</button>
+      </form>
+
+      <p id="status" class="text-sm text-slate-700"></p>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('reportForm');
+    const statusEl = document.getElementById('status');
+    const amountKobo = 300000;
+
+    async function getPaystackKey() {
+      const response = await fetch('/api/paystack-config');
+      if (!response.ok) {
+        throw new Error('Unable to load payment config.');
+      }
+      const data = await response.json();
+      return data.public_key;
+    }
+
+    async function sendGenerateRequest(payload) {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Report generation failed');
+      }
+      return data;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      statusEl.textContent = 'Initializing payment...';
+
+      try {
+        const paystackKey = await getPaystackKey();
+        const handler = PaystackPop.setup({
+          key: paystackKey,
+          email: payload.email,
+          amount: amountKobo,
+          currency: 'NGN',
+          callback: async function(response) {
+            statusEl.textContent = 'Payment successful. Starting report generation...';
+            try {
+              const result = await sendGenerateRequest({
+                ...payload,
+                payment_reference: response.reference
+              });
+              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
+            } catch (error) {
+              statusEl.textContent = error.message;
+            }
+          },
+          onClose: function() {
+            statusEl.textContent = 'Payment window closed.';
+          }
+        });
+
+        handler.openIframe();
+      } catch (error) {
+        statusEl.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>
