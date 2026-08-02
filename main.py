@@ -22,6 +22,9 @@ import json
 from openai import OpenAI
 import time
 
+
+
+
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("giscopo")
 
@@ -117,11 +120,42 @@ def _set_job_state(job_id: str, status: str, message: str) -> None:
 #         raise HTTPException(status_code=400, detail="Incorrect payment amount")
 
 
-def verify_paystack_payment(reference: str) -> None:
+# def verify_paystack_payment(reference: str) -> None:
+#     if not PAYSTACK_SECRET_KEY:
+#         raise HTTPException(status_code=500, detail="Paystack secret is not configured")
+
+#     headers = {"Authorization": "Bearer " + PAYSTACK_SECRET_KEY}
+#     try:
+#         response = requests.get(
+#             PAYSTACK_VERIFY_URL.format(reference=reference),
+#             headers=headers,
+#             timeout=30,
+#         )
+#         response.raise_for_status()
+#         payload = response.json()
+#     except requests.RequestException as exc:
+#         logger.exception("Paystack verification failed")
+#         raise HTTPException(status_code=502, detail="Payment provider unavailable") from exc
+
+#     data: dict[str, Any] = payload.get("data") or {}
+#     status = (data.get("status") or "").strip().lower()
+#     amount = data.get("amount")
+
+#     if status != "success":
+#         raise HTTPException(status_code=402, detail="Payment not successful")
+        
+#     # Lock the price to exactly ₦2,490 (which is 252792 kobo)
+#     if amount < 252792:
+#         raise HTTPException(status_code=400, detail="Incorrect payment amount")
+
+
+
+def verify_paystack_payment(reference: str) -> dict[str, Any]:
     if not PAYSTACK_SECRET_KEY:
         raise HTTPException(status_code=500, detail="Paystack secret is not configured")
 
-    headers = {"Authorization": "Bearer " + PAYSTACK_SECRET_KEY}
+    headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+    
     try:
         response = requests.get(
             PAYSTACK_VERIFY_URL.format(reference=reference),
@@ -131,19 +165,35 @@ def verify_paystack_payment(reference: str) -> None:
         response.raise_for_status()
         payload = response.json()
     except requests.RequestException as exc:
-        logger.exception("Paystack verification failed")
+        logger.exception(f"Paystack verification failed for reference: {reference}")
         raise HTTPException(status_code=502, detail="Payment provider unavailable") from exc
 
     data: dict[str, Any] = payload.get("data") or {}
     status = (data.get("status") or "").strip().lower()
-    amount = data.get("amount")
+    
+    # FIX 1: Provide a default fallback of 0 so `amount` is never None. 
+    # If `amount` is None, `None < 252792` will crash the server with a TypeError.
+    amount = data.get("amount") or 0
 
     if status != "success":
         raise HTTPException(status_code=402, detail="Payment not successful")
         
-    # Lock the price to exactly ₦2,490 (which is 252792 kobo)
-    if amount < 252792:
-        raise HTTPException(status_code=400, detail="Incorrect payment amount")
+    # FIX 2: Exact Match vs Less Than
+    # Paystack handles math in Kobo. 
+    # If the user pays ₦2,527.92 (₦2,490 + Paystack fees), the kobo value is 252792.
+    # It is safer to use `!=` instead of `<` to prevent overpayment edge cases,
+    # or explicitly allow overpayment but catch underpayment.
+    EXPECTED_AMOUNT_KOBO = 252792
+    
+    if amount < EXPECTED_AMOUNT_KOBO:
+        # 400 Bad Request is correct here
+        raise HTTPException(status_code=400, detail=f"Incorrect payment amount. Expected at least {EXPECTED_AMOUNT_KOBO} kobo, got {amount} kobo.")
+    
+    # FIX 3: Return the data
+    # You should return the 'data' dictionary so the calling function can extract 
+    # the customer's email and mark THIS specific reference as 'used' in your database.
+    return data
+
 
 
 
@@ -606,24 +656,205 @@ import json
 import logging
 from openai import OpenAI
 
-# 1. Initialize the Groq Client (using the OpenAI SDK)
+# # 1. Initialize the Groq Client (using the OpenAI SDK)
+# GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+# client = OpenAI(
+#     base_url="https://api.groq.com/openai/v1",
+#     api_key=GROQ_API_KEY
+# )
+
+# def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
+#     """
+#     Generates dynamic, highly technical GIS report sections using Groq.
+#     Forces extreme length (90+ words per section) for massive PDFs.
+#     """
+    
+#     if not GROQ_API_KEY:
+#         logging.error("GROQ_API_KEY is missing. Falling back to default text.")
+#         return _get_fallback_text(location)
+
+#     # The Mega-Prompt: Cranked up to force 90 to 100+ words per section
+#     prompt = (
+#         f"You are a senior academic assistant helping a {department} student write an exhaustive, highly technical GIS report for {location}. "
+#         "Your primary directive is EXTREME LENGTH and DEPTH. You MUST write at least 200 words for EVERY SINGLE SECTION. Do not write short summaries. "
+#         "Expand heavily on theoretical backgrounds, practical implications, civil engineering considerations, and geomatics methodologies. "
+#         "In the 'overview', discuss the extensive history of urbanization, infrastructure sprawl, and spatial planning challenges in the area. "
+#         "In 'data_description', thoroughly detail raster resolution, coordinate systems (WGS 84, UTM Zone 31N), and complex database schema topologies. "
+#         "In 'methodology', explain the exact step-by-step algorithms for georeferencing, Polynomial 1 transformations, Nearest Neighbor resampling, and advanced digitizing topology rules (snapping tolerances, avoiding dangles). "
+#         "In 'discussion', extensively analyze spatial patterns, road network hierarchies, and land-use distribution over multiple long paragraphs. "
+#         "Return the response in strict JSON format with exactly these 5 keys: "
+#         "'overview', 'data_description', 'methodology', 'discussion', 'conclusion'."
+#     )
+#     # List your models in order of preference
+#     models_to_try = [
+#         "llama-3.3-70b-versatile", # 1st Choice: Smartest
+#         "llama-3.1-8b-instant"     # 2nd Choice: Massive daily limits, great fallback
+#     ]
+
+#     for model_name in models_to_try:
+#         try:
+#             logging.info(f"Generating report for {location} using Groq model: {model_name}...")
+            
+#             response = client.chat.completions.create(
+#                 model=model_name,
+#                 messages=[
+#                     {"role": "system", "content": "You are a senior GIS academic writer that outputs strict JSON. You prioritize long, exhaustive paragraph generation."},
+#                     {"role": "user", "content": prompt}
+#                 ],
+#                 response_format={ "type": "json_object" },
+#                 temperature=0.7, 
+#                 timeout=60, 
+#                 max_tokens=4096
+#             )
+            
+#             raw_text = response.choices[0].message.content
+#             return json.loads(raw_text)
+
+#         except Exception as e:
+#             # If a model fails, log a warning and let the loop try the next one in the list
+#             logging.warning(f"Groq API failed with {model_name}: {e}. Switching to next model...")
+            
+#     # If the loop finishes and ALL models failed, use the hardcoded text
+#     logging.error("All Groq models failed. Falling back to default text.")
+#     return _get_fallback_text(location)
+
+
+import os
+import json
+import logging
+import time
+import random
+from openai import OpenAI
+
+# 1. Initialize the Groq Client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-client = OpenAI(
+groq_client = OpenAI(
     base_url="https://api.groq.com/openai/v1",
     api_key=GROQ_API_KEY
 )
 
+# 2. Initialize the Fallback Client (GitHub Models)
+# This handles the scenario where the entire Groq API is unresponsive
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+fallback_client = OpenAI(
+    base_url="https://models.inference.ai.azure.com",
+    api_key=GITHUB_TOKEN
+)
+
+# def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
+#     """
+#     Generates dynamic, highly technical GIS report sections using Groq.
+#     Falls back to GitHub Models if Groq fails, then to default text.
+#     Forces extreme length (90+ words per section) for massive PDFs.
+#     """
+    
+#     if not GROQ_API_KEY and not GITHUB_TOKEN:
+#         logging.error("No API keys found. Falling back to default text.")
+#         return _get_fallback_text(location)
+
+#     # The Mega-Prompt
+#     prompt = (
+#         f"You are a senior academic assistant helping a {department} student write an exhaustive, highly technical GIS report for {location}. "
+#         "Your primary directive is EXTREME LENGTH and DEPTH. You MUST write at least 200 words for EVERY SINGLE SECTION. Do not write short summaries. "
+#         "Expand heavily on theoretical backgrounds, practical implications, civil engineering considerations, and geomatics methodologies. "
+#         "In the 'overview', discuss the extensive history of urbanization, infrastructure sprawl, and spatial planning challenges in the area. "
+#         "In 'data_description', thoroughly detail raster resolution, coordinate systems (WGS 84, UTM Zone 31N), and complex database schema topologies. "
+#         "In 'methodology', explain the exact step-by-step algorithms for georeferencing, Polynomial 1 transformations, Nearest Neighbor resampling, and advanced digitizing topology rules (snapping tolerances, avoiding dangles). "
+#         "In 'discussion', extensively analyze spatial patterns, road network hierarchies, and land-use distribution over multiple long paragraphs. "
+#         "Return the response in strict JSON format with exactly these 5 keys: "
+#         "'overview', 'data_description', 'methodology', 'discussion', 'conclusion'."
+#     )
+
+#     # List your models in order of preference: (provider_name, model_name, client_instance)
+#     models_to_try = [
+#         ("Groq", "llama-3.3-70b-versatile", groq_client), # 1st Choice: Smartest
+#         ("Groq", "llama-3.1-8b-instant", groq_client),    # 2nd Choice: Massive daily limits
+#         ("GitHub", "gpt-4o", fallback_client)             # 3rd Choice: Ultimate fallback provider
+#     ]
+
+#     max_retries = 2
+#     base_delay = 1.0
+
+#     for provider, model_name, current_client in models_to_try:
+#         # Skip if the required token for this specific provider is missing
+#         if provider == "Groq" and not GROQ_API_KEY:
+#             continue
+#         if provider == "GitHub" and not GITHUB_TOKEN:
+#             continue
+
+#         for attempt in range(max_retries):
+#             try:
+#                 logging.info(f"Attempt {attempt + 1} for {location} using {provider} model: {model_name}...")
+                
+#                 response = current_client.chat.completions.create(
+#                     model=model_name,
+#                     messages=[
+#                         {"role": "system", "content": "You are a senior GIS academic writer that outputs strict JSON. You prioritize long, exhaustive paragraph generation."},
+#                         {"role": "user", "content": prompt}
+#                     ],
+#                     response_format={ "type": "json_object" },
+#                     temperature=0.7, 
+#                     timeout=60, 
+#                     max_tokens=4096
+#                 )
+                
+#                 raw_text = response.choices[0].message.content
+#                 return json.loads(raw_text)
+
+#             except Exception as e:
+#                 logging.warning(f"Error with {provider} ({model_name}) on attempt {attempt + 1}: {e}")
+                
+#                 if attempt < max_retries - 1:
+#                     # Exponential backoff with jitter
+#                     sleep_time = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
+#                     logging.info(f"Backing off for {sleep_time:.2f}s before next attempt...")
+#                     time.sleep(sleep_time)
+        
+#         logging.warning(f"Exhausted all retries for {model_name}. Switching to next model in queue...")
+
+#     # If the loop finishes and ALL models/providers failed
+#     logging.error("CRITICAL: All AI models and fallback providers failed. Falling back to default text.")
+#     return _get_fallback_text(location)
+
+
+import os
+import json
+import logging
+import time
+import random
+import cohere
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# 1. Initialize the Groq Client
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+groq_client = OpenAI(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=GROQ_API_KEY
+)
+
+# 2. Initialize the Fallback Client (Cohere)
+COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+cohere_client = cohere.ClientV2(COHERE_API_KEY) if COHERE_API_KEY else None
+
 def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
     """
     Generates dynamic, highly technical GIS report sections using Groq.
+    Falls back to Cohere if Groq fails, then to default text.
     Forces extreme length (90+ words per section) for massive PDFs.
     """
     
-    if not GROQ_API_KEY:
-        logging.error("GROQ_API_KEY is missing. Falling back to default text.")
+    if not GROQ_API_KEY and not COHERE_API_KEY:
+        logging.error("No API keys found. Falling back to default text.")
         return _get_fallback_text(location)
 
-    # The Mega-Prompt: Cranked up to force 90 to 100+ words per section
+    # The Mega-Prompt
     prompt = (
         f"You are a senior academic assistant helping a {department} student write an exhaustive, highly technical GIS report for {location}. "
         "Your primary directive is EXTREME LENGTH and DEPTH. You MUST write at least 200 words for EVERY SINGLE SECTION. Do not write short summaries. "
@@ -635,38 +866,95 @@ def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
         "Return the response in strict JSON format with exactly these 5 keys: "
         "'overview', 'data_description', 'methodology', 'discussion', 'conclusion'."
     )
-# List your models in order of preference
-    models_to_try = [
-        "llama-3.3-70b-versatile", # 1st Choice: Smartest
-        "llama-3.1-8b-instant"     # 2nd Choice: Massive daily limits, great fallback
-    ]
 
-    for model_name in models_to_try:
-        try:
-            logging.info(f"Generating report for {location} using Groq model: {model_name}...")
+    max_retries = 2
+    base_delay = 1.0
+
+    # --- PRIMARY ATTEMPT: GROQ ---
+    if GROQ_API_KEY:
+        groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+        
+        for model_name in groq_models:
+            for attempt in range(max_retries):
+                try:
+                    logging.info(f"Attempt {attempt + 1} for {location} using Groq model: {model_name}...")
+                    
+                    response = groq_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": "You are a senior GIS academic writer that outputs strict JSON. You prioritize long, exhaustive paragraph generation."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={ "type": "json_object" },
+                        temperature=0.7, 
+                        timeout=60, 
+                        max_tokens=4096
+                    )
+                    
+                    raw_text = response.choices[0].message.content
+                    return json.loads(raw_text)
+
+                except Exception as e:
+                    logging.warning(f"Error with Groq ({model_name}) on attempt {attempt + 1}: {e}")
+                    
+                    if attempt < max_retries - 1:
+                        # Exponential backoff with jitter
+                        sleep_time = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
+                        logging.info(f"Backing off for {sleep_time:.2f}s before next attempt...")
+                        time.sleep(sleep_time)
             
-            response = client.chat.completions.create(
-                model=model_name,
+            logging.warning(f"Exhausted all retries for {model_name}. Switching to next Groq model...")
+
+    # --- FALLBACK ATTEMPT: COHERE ---
+    if COHERE_API_KEY and cohere_client:
+        logging.info("Switching to Ultimate Fallback: Cohere (command-r-plus)...")
+        try:
+            # Cohere V2 SDK usage
+            response = cohere_client.chat(
+                model="command-r-plus-08-2024", # Cohere's flagship model
                 messages=[
-                    {"role": "system", "content": "You are a senior GIS academic writer that outputs strict JSON. You prioritize long, exhaustive paragraph generation."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "user", 
+                        "content": prompt + "\n\nCRITICAL: You must wrap your entire response in valid JSON format."
+                    }
                 ],
-                response_format={ "type": "json_object" },
-                temperature=0.7, 
-                timeout=60, 
-                max_tokens=4096
+                temperature=0.7
             )
             
-            raw_text = response.choices[0].message.content
-            return json.loads(raw_text)
-
-        except Exception as e:
-            # If a model fails, log a warning and let the loop try the next one in the list
-            logging.warning(f"Groq API failed with {model_name}: {e}. Switching to next model...")
+            # Cohere V2 returns text inside response.message.content[0].text
+            raw_text = response.message.content[0].text
             
-    # If the loop finishes and ALL models failed, use the hardcoded text
-    logging.error("All Groq models failed. Falling back to default text.")
+            # Clean up potential markdown formatting (```json ... ```)
+            if raw_text.startswith("```json"):
+                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+            elif raw_text.startswith("```"):
+                raw_text = raw_text.split("```")[1].split("```")[0].strip()
+                
+            return json.loads(raw_text)
+            
+        except Exception as e:
+            logging.error(f"Cohere fallback also failed: {e}")
+
+    # If all models/providers failed
+    logging.error("CRITICAL: All AI models failed. Falling back to default text.")
     return _get_fallback_text(location)
+
+def _get_fallback_text(location: str):
+    return {
+        "overview": f"System error. Unable to generate overview for {location}.",
+        "data_description": "Data description unavailable.",
+        "methodology": "Methodology unavailable.",
+        "discussion": "Discussion unavailable.",
+        "conclusion": "Conclusion unavailable."
+    }
+
+if __name__ == "__main__":
+    print("\n--- Starting Fallback Test ---")
+    result = generate_dynamic_sections("Lagos", "Urban Planning")
+    print("\nFinal Result Keys:", result.keys())
+    print("--- Test Complete ---\n")
+
+
 
 def _get_fallback_text(location: str) -> dict[str, str]:
     """Helper function to keep the main function clean if Groq fails."""
@@ -681,19 +969,19 @@ def _get_fallback_text(location: str) -> dict[str, str]:
 
 
       
-# import requests
-# import threading
-# def keep_alive():
-#     while True:
-#         try:
-#             url = "https://giscopo.onrender.com/"  # Replace with your actual Render URL
-#             res = requests.get(url)
-#             print(f"Pinged at {time.ctime()}: Status {res.status_code}")
-#         except Exception as e:
-#             print(f"Error pinging at {time.ctime()}: {e}")
-#         time.sleep(60 * 12)  # Ping every 14 minutes
+import requests
+import threading
+def keep_alive():
+    while True:
+        try:
+            url = "https://giscopo.onrender.com/"  # Replace with your actual Render URL
+            res = requests.get(url)
+            print(f"Pinged at {time.ctime()}: Status {res.status_code}")
+        except Exception as e:
+            print(f"Error pinging at {time.ctime()}: {e}")
+        time.sleep(60 * 12)  # Ping every 14 minutes
 
-# # # Create and start the background thread
-# t = threading.Thread(target=keep_alive)
-# t.daemon = True
-# t.start()
+# # Create and start the background thread
+t = threading.Thread(target=keep_alive)
+t.daemon = True
+t.start()
