@@ -119,6 +119,7 @@ class EmailPayload:
     attachment_filename: str
     attachment_bytes: bytes
 
+#yh
 def _send_with_sendgrid(payload: EmailPayload) -> None:
     api_key = os.getenv("SENDGRID_API_KEY", "").strip()
     # Note: SendGrid needs a verified sender email, not the resend.dev one
