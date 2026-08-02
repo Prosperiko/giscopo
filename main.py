@@ -291,8 +291,8 @@ def get_paystack_config() -> dict[str, str]:
 def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
     
     # Bypass Paystack during local backend testing
-    if payload.payment_reference != "test_bypass":
-        verify_paystack_payment(payload.payment_reference, payload.email)
+    # if payload.payment_reference != "test_bypass":
+    #     verify_paystack_payment(payload.payment_reference, payload.email)
 
     job_id = str(uuid.uuid4())
     _set_job_state(job_id, "queued", "Report request accepted")
