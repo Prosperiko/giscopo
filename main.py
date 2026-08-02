@@ -445,7 +445,7 @@ def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
             "conclusion": "The digitization and spatial analysis were successfully completed using open-source GIS software. By linking physical geography with detailed descriptive attributes, the project transitions spatial records from static imagery into an intelligent database, providing reliable educational outputs for academic submissions."
         }      
 
-
+import threading
 def keep_alive():
     while True:
         try:
