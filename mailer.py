@@ -74,7 +74,7 @@ def _send_with_resend(payload: EmailPayload) -> None:
             "text": payload.body,
             "attachments": attachments,
         },
-        timeout=30,
+        timeout=120,
     )
     if response.status_code >= 300:
         raise MailerError(f"Resend failed with status code {response.status_code}")

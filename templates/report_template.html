@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -88,5 +88,137 @@
   <section class="page"><h2>Appendix A: Method Checklist</h2><p>1. Location identification and coordinate targeting.</p><p>2. Satellite snapshot acquisition.</p><p>3. QGIS interface compositing and metadata annotation.</p><p>4. Structured narrative generation and page formatting.</p><p>5. PDF compilation and electronic delivery.</p></section>
 
   <section class="page"><h2>References / Bibliography (APA Style)</h2><p>Burrough, P. A., McDonnell, R. A., & Lloyd, C. D. (2015). <em>Principles of Geographical Information Systems</em>. Oxford University Press.</p><p>Campbell, J. B., & Wynne, R. H. (2011). <em>Introduction to Remote Sensing</em>. Guilford Press.</p><p>Longley, P. A., Goodchild, M. F., Maguire, D. J., & Rhind, D. W. (2015). <em>Geographical Information Science and Systems</em>. Wiley.</p><p>QGIS Development Team. (2026). <em>QGIS Geographic Information System</em>. Open Source Geospatial Foundation.</p></section>
+</body>
+</html> -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Academic GIS Report</title>
+  <style>
+    @page { size: A4; margin: 25mm; }
+    body { font-family: "Times New Roman", serif; color: #000; line-height: 1.8; font-size: 14pt; }
+    h1 { margin: 0 0 20px; color: #020202; font-size: 20pt; text-transform: uppercase; }
+    h2 { margin: 0 0 15px; color: #000000; font-size: 16pt; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+    p { margin: 0 0 18px; text-align: justify; } /* Added more space below paragraphs */
+    /* This forces the "Next page" behavior requested by your lecturer */
+    .page { page-break-after: always; }
+    
+    /* Cover page styling */
+    .cover { display: flex; flex-direction: column; justify-content: center; min-height: 220mm; text-align: center; }
+    .meta { margin-top: 30mm; font-size: 14pt; text-align: left; padding: 0 40px; }
+    .meta p { margin-bottom: 12px; }
+    
+    .image-wrap { margin: 15px 0; padding: 10px; text-align: center; }
+    .image-wrap img { width: 100%; height: auto; max-height: 140mm; object-fit: contain; border: 1px solid #333; }
+    .caption { font-style: italic; font-size: 11pt; text-align: center; margin-top: 5px; }
+  </style>
+</head>
+<body>
+
+  <!-- PAGE 1: Cover Page -->
+  <section class="page cover">
+    <h1>Geographic Information Systems Project</h1>
+    <h2>Spatial Analysis of {{ location }}</h2>
+    <div class="meta">
+      <p><strong>Name:</strong> {{ full_name }}</p>
+      <p><strong>Matric No:</strong> {{ student_id }}</p>
+      <p><strong>Level:</strong> 200 Level</p> <!-- Adjust this statically or make it a dynamic variable -->
+      <p><strong>Course Code:</strong> GIS 202</p>
+      <p><strong>Lecturer:</strong> Mr. NDINWA CHUKS</p> 
+    </div>
+  </section>
+
+  <!-- PAGE 2: Project Overview -->
+  <section class="page">
+    <h2>Project Overview</h2>
+    <p>{{ overview }}</p>
+  </section>
+
+  <!-- PAGE 3: Data Description -->
+  <section class="page">
+    <h2>Data Description</h2>
+    <p>{{ data_description }}</p>
+  </section>
+
+  <!-- PAGE 4: Methodology -->
+  <section class="page">
+    <h2>Processes (Methodology)</h2>
+    <p>{{ methodology }}</p>
+  </section>
+
+  <!-- PAGE 5: Results (Screenshots) -->
+  <!-- <section class="page">
+    <h2>Results: Spatial Output</h2>
+    
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ satellite_image_b64 }}" alt="Raw Satellite View" />
+      <div class="caption">Figure 1. Raw satellite imagery establishing the spatial extent of the study area.</div>
+    </div>
+    
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ qgis_image_b64 }}" alt="QGIS Interface" />
+      <div class="caption">Figure 2. QGIS workspace demonstrating vector layer organization and Ground Control Points (GCPs).</div>
+    </div>
+  </section> -->
+
+
+  <!-- PAGE 5: Results (Screenshots) -->
+  <section class="page">
+    <h2>Results: Spatial Output</h2>
+    
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ satellite_image_b64 }}" alt="Raw Satellite View" />
+      <div class="caption">Figure 1. Raw satellite imagery establishing the spatial extent of the study area.</div>
+    </div>
+    
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ qgis_image_b64 }}" alt="QGIS Interface" />
+      <div class="caption">Figure 2. QGIS workspace demonstrating vector layer organization and Ground Control Points (GCPs).</div>
+    </div>
+
+    <!-- THE MISSING FINAL DIGITIZED MAP -->
+    <div class="image-wrap">
+      <img src="data:image/png;base64,{{ final_layout_b64 }}" alt="Final Map Layout" />
+      <div class="caption">Figure 3. The completed 2D vector database presented as a professional map sheet.</div>
+    </div>
+  </section>
+
+
+  <!-- PAGE 6: Discussion -->
+  <section class="page">
+    <h2>Discussion of Results</h2>
+    <p>{{ discussion }}</p>
+  </section>
+
+  <!-- PAGE 7: Conclusion -->
+  <section class="page">
+    <h2>Conclusion</h2>
+    <p>{{ conclusion }}</p>
+  </section>
+
 </body>
 </html>

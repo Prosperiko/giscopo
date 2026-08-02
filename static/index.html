@@ -26,7 +26,7 @@
     </div>
   </main>
 
-  <script>
+  <!-- <script>
     const form = document.getElementById('reportForm');
     const statusEl = document.getElementById('status');
     const amountKobo = 300000;
@@ -77,6 +77,75 @@
             } catch (error) {
               statusEl.textContent = error.message;
             }
+          },
+          onClose: function() {
+            statusEl.textContent = 'Payment window closed.';
+          }
+        });
+
+        handler.openIframe();
+      } catch (error) {
+        statusEl.textContent = error.message;
+      }
+    });
+  </script> -->
+
+  <script>
+    const form = document.getElementById('reportForm');
+    const statusEl = document.getElementById('status');
+    const amountKobo = 249000; // 2,490 NGN
+
+    async function getPaystackKey() {
+      const response = await fetch('/api/paystack-config');
+      if (!response.ok) {
+        throw new Error('Unable to load payment config.');
+      }
+      const data = await response.json();
+      return data.public_key;
+    }
+
+    async function sendGenerateRequest(payload) {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Report generation failed');
+      }
+      return data;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      statusEl.textContent = 'Initializing payment...';
+
+      try {
+        const paystackKey = await getPaystackKey();
+        
+        const handler = PaystackPop.setup({
+          key: paystackKey,
+          email: payload.email,
+          amount: amountKobo,
+          currency: 'NGN',
+          // CHANGED: Removed "async" so Paystack accepts it as a valid function
+          callback: function(response) {
+            statusEl.textContent = 'Payment successful. Starting report generation...';
+            
+            // Handle the asynchronous API call inside the standard function
+            sendGenerateRequest({
+              ...payload,
+              payment_reference: response.reference
+            })
+            .then(result => {
+              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
+            })
+            .catch(error => {
+              statusEl.textContent = error.message;
+            });
           },
           onClose: function() {
             statusEl.textContent = 'Payment window closed.';
