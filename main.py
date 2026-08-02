@@ -182,12 +182,15 @@ def verify_paystack_payment(reference: str) -> dict[str, Any]:
     # Paystack handles math in Kobo. 
     # If the user pays ₦2,527.92 (₦2,490 + Paystack fees), the kobo value is 252792.
     # It is safer to use `!=` instead of `<` to prevent overpayment edge cases,
-    # or explicitly allow overpayment but catch underpayment.
-    EXPECTED_AMOUNT_KOBO = 252792
+    # or explicitly allow overpayment but catch underpayment.    
+    EXPECTED_AMOUNT_KOBO = 249000
     
     if amount < EXPECTED_AMOUNT_KOBO:
         # 400 Bad Request is correct here
         raise HTTPException(status_code=400, detail=f"Incorrect payment amount. Expected at least {EXPECTED_AMOUNT_KOBO} kobo, got {amount} kobo.")
+    
+    
+
     
     # FIX 3: Return the data
     # You should return the 'data' dictionary so the calling function can extract 
