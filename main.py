@@ -183,7 +183,7 @@ def verify_paystack_payment(reference: str) -> dict[str, Any]:
     # If the user pays ₦2,527.92 (₦2,490 + Paystack fees), the kobo value is 252792.
     # It is safer to use `!=` instead of `<` to prevent overpayment edge cases,
     # or explicitly allow overpayment but catch underpayment.    
-    EXPECTED_AMOUNT_KOBO = 249000
+    EXPECTED_AMOUNT_KOBO = 245000
     
     if amount < EXPECTED_AMOUNT_KOBO:
         # 400 Bad Request is correct here
