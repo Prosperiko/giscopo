@@ -92,6 +92,7 @@ class JobStatus(BaseModel):
 
 JOB_STATE: dict[str, JobStatus] = {}
 
+PROCESSED_REFS: set[str] = set()
 
 def _set_job_state(job_id: str, status: str, message: str) -> None:
     JOB_STATE[job_id] = JobStatus(
@@ -160,6 +161,8 @@ def verify_paystack_payment(reference: str) -> dict[str, Any]:
 def _process_report(job_id: str, request: ReportRequest) -> None:
     _set_job_state(job_id, "processing", "Generating screenshots")
 
+    
+    
     try:
         with tempfile.TemporaryDirectory(prefix="giscopo-") as temp_dir:
             # ONLY CALL THIS ONCE
@@ -171,7 +174,6 @@ def _process_report(job_id: str, request: ReportRequest) -> None:
         # 1. Generate the unique, personalized text via GitHub Models
         _set_job_state(job_id, "processing", "AI generating academic content...")
         
-        time.sleep(5)
         dynamic_text = generate_dynamic_sections(request.location, request.department)
 
         # 2. Build the PDF, injecting both the images and the new AI text
@@ -279,6 +281,15 @@ def get_paystack_config() -> dict[str, str]:
 def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
     
     # Bypass Paystack during local backend testing
+    
+    # 🔒 BLOCK DUPLICATE REFERENCES IMMEDIATELY
+    if payload.payment_reference in PROCESSED_REFS:
+        logger.warning("Duplicate request blocked for reference: %s", payload.payment_reference)
+        raise HTTPException(status_code=409, detail="This payment has already been processed. Check your email.")
+    
+    if payload.payment_reference in PROCESSED_REFS:
+        raise HTTPException(status_code=409, detail="This payment has already been processed. Check your email.")
+    
     payment_data = None
     if payload.payment_reference != "test_bypass":
         # Verify payment and grab the provider response so we can log and check
@@ -291,12 +302,13 @@ def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -
         if paid_email and paid_email != payload.email.lower():
             logger.info("Email mismatch noted: Paid with %s, delivering to %s", paid_email, payload.email)
 
+    PROCESSED_REFS.add(payload.payment_reference)
 
     job_id = str(uuid.uuid4())
     _set_job_state(job_id, "queued", "Report request accepted")
     background_tasks.add_task(_process_report, job_id, payload)
 
-    _process_report(job_id, payload)
+    
     
     return {
         "job_id": job_id,
