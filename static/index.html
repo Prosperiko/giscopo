@@ -19,9 +19,10 @@
         <input required name="student_id" placeholder="Matric / Student ID" class="w-full border rounded px-3 py-2" />
         <input required name="department" placeholder="Department" class="w-full border rounded px-3 py-2" />
         <input required type="email" name="email" placeholder="Target Email" class="w-full border rounded px-3 py-2" />
-        <input required name="location" placeholder="Location Name or Coordinates (lat,lng)" class="w-full border rounded px-3 py-2" />
-        <!-- <button type="submit" class="w-full bg-indigo-600 text-white rounded px-4 py-2 font-semibold">Pay & Generate Report</button> -->
-        <p class="text-sm text-slate-600"> Please hold on payments and check back in a few minutes, services would be back up shortly, Rest Assured.</p>
+        <input required name="location" placeholder="Name of the Location" class="w-full border rounded px-3 py-2" />
+        <input required name="coordinates" placeholder="Use Coordinates (lat,lng) here" class="w-full border rounded px-3 py-2" />
+        <button type="submit" class="w-full bg-indigo-600 text-white rounded px-4 py-2 font-semibold">Pay & Generate Report</button>
+        <p class="text-sm text-slate-600"> Use Latitude and Longitude for precise location as shown in the image sent to the group by your course rep.</p>
       </form>
 
       <p id="status" class="text-sm text-slate-700"></p>
@@ -92,7 +93,7 @@
     });
   </script> -->
 
-  <script>
+  <!-- <script>
     const form = document.getElementById('reportForm');
     const statusEl = document.getElementById('status');
     const amountKobo = 245000; // 2,450 NGN
@@ -159,6 +160,99 @@
         statusEl.textContent = error.message;
       }
     });
+  </script> -->
+    
+  <script>
+    const form = document.getElementById('reportForm');
+    const statusEl = document.getElementById('status');
+    const amountKobo = 245000; // ₦2,450
+
+    async function getPaystackKey() {
+      const response = await fetch('/api/paystack-config');
+      if (!response.ok) {
+        throw new Error('Unable to load payment config.');
+      }
+      const data = await response.json();
+      return data.public_key;
+    }
+
+    async function initializePaystack(payload) {
+      // NEW: Call your backend to create the transaction with metadata
+      const response = await fetch('/api/paystack-initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: payload.email,
+          amount: amountKobo,
+          full_name: payload.full_name,
+          student_id: payload.student_id,
+          department: payload.department,
+          location: payload.location,
+          coordinates: payload.coordinates || "", // your new field
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Payment initialization failed');
+      }
+      return data; // returns { authorization_url, access_code, reference }
+    }
+
+    async function sendGenerateRequest(payload) {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Report generation failed');
+      }
+      return data;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      statusEl.textContent = 'Initializing payment...';
+
+      try {
+        const paystackKey = await getPaystackKey();
+
+        // STEP 1: Backend creates the transaction with metadata
+        const initData = await initializePaystack(payload);
+        
+        // STEP 2: Open Paystack using the access_code from backend
+        const handler = PaystackPop.setup({
+          key: paystackKey,
+          access_code: initData.access_code, // ← use this instead of email/amount
+          callback: function(response) {
+            statusEl.textContent = 'Payment successful. Starting report generation...';
+            
+            sendGenerateRequest({
+              ...payload,
+              payment_reference: response.reference
+            })
+            .then(result => {
+              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
+            })
+            .catch(error => {
+              statusEl.textContent = error.message;
+            });
+          },
+          onClose: function() {
+            statusEl.textContent = 'Payment window closed.';
+          }
+        });
+
+        handler.openIframe();
+      } catch (error) {
+        statusEl.textContent = error.message;
+      }
+    });
   </script>
+
+
 </body>
 </html>
