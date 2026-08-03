@@ -48,12 +48,101 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 
+
+
+
+
+
+from pydantic import BaseModel
+import json
+
+# Add this model
+class PaystackInitRequest(BaseModel):
+    email: EmailStr
+    amount: int = Field(default=245000, description="Amount in kobo. Default ₦2,450 = 245000")
+    full_name: str = Field(min_length=2, max_length=120)
+    student_id: str = Field(min_length=2, max_length=60)
+    department: str = Field(min_length=2, max_length=120)
+    location: str = Field(min_length=2, max_length=200)
+    coordinates: str = Field(default="", max_length=100)  # Your new field
+
+
+PAYSTACK_INIT_URL = "https://api.paystack.co/transaction/initialize"
+
+
+@app.post("/api/paystack-initialize")
+def initialize_paystack(payload: PaystackInitRequest) -> dict[str, Any]:
+    """
+    Creates a Paystack transaction with user metadata attached.
+    Returns an access_code for Paystack Pop OR an authorization_url for redirect.
+    """
+    if not PAYSTACK_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Paystack secret key is not configured")
+
+    headers = {
+        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    # This metadata appears on your Paystack dashboard under Transaction Details
+    body = {
+        "email": payload.email,
+        "amount": payload.amount,
+        "metadata": {
+            # custom_fields is what Paystack renders nicely on the dashboard UI
+            "custom_fields": [
+                {"display_name": "Full Name", "variable_name": "full_name", "value": payload.full_name},
+                {"display_name": "Student ID", "variable_name": "student_id", "value": payload.student_id},
+                {"display_name": "Department", "variable_name": "department", "value": payload.department},
+                {"display_name": "Location", "variable_name": "location", "value": payload.location},
+                {"display_name": "Coordinates", "variable_name": "coordinates", "value": payload.coordinates or "N/A"},
+            ],
+            # You can also add flat key-value pairs for your own internal tracking
+            "report_location": payload.location,
+            "report_coordinates": payload.coordinates,
+        },
+        # Optional: set a callback URL so Paystack redirects back to your site after payment
+        # "callback_url": "https://yourdomain.com/payment-success",
+    }
+
+    try:
+        response = requests.post(PAYSTACK_INIT_URL, headers=headers, json=body, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        logger.exception("Paystack initialization failed")
+        raise HTTPException(status_code=502, detail="Payment provider unavailable") from exc
+
+    if not data.get("status"):
+        raise HTTPException(status_code=400, detail=data.get("message", "Paystack init failed"))
+
+    return {
+        "status": "success",
+        "authorization_url": data["data"]["authorization_url"],
+        "access_code": data["data"]["access_code"],
+        "reference": data["data"]["reference"],
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class ReportRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     student_id: str = Field(min_length=2, max_length=60)
     department: str = Field(min_length=2, max_length=120)
     email: EmailStr
     location: str = Field(min_length=2, max_length=200)
+    coordinates: str = Field(default="", max_length=100)
     payment_reference: str = Field(min_length=6, max_length=120)
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -82,71 +171,6 @@ def _set_job_state(job_id: str, status: str, message: str) -> None:
         updated_at=datetime.now(timezone.utc).isoformat(),
     )
 
-
-# def verify_paystack_payment(reference: str, expected_email: str) -> None:
-#     if not PAYSTACK_SECRET_KEY:
-#         raise HTTPException(status_code=500, detail="Paystack secret is not configured")
-
-#     headers = {"Authorization": "Bearer " + PAYSTACK_SECRET_KEY}
-#     try:
-#         response = requests.get(
-#             PAYSTACK_VERIFY_URL.format(reference=reference),
-#             headers=headers,
-#             timeout=30,
-#         )
-#         response.raise_for_status()
-#         payload = response.json()
-#     except requests.RequestException as exc:
-#         logger.exception("Paystack verification failed")
-#         raise HTTPException(status_code=502, detail="Payment provider unavailable") from exc
-
-#     data: dict[str, Any] = payload.get("data") or {}
-#     paid_email = ((data.get("customer") or {}).get("email") or "").strip().lower()
-#     status = (data.get("status") or "").strip().lower()
-
-#     if status != "success":
-#         raise HTTPException(status_code=402, detail="Payment not successful")
-#     # if paid_email and paid_email != expected_email.lower():
-#     #     raise HTTPException(status_code=400, detail="Payment record does not match provided email")
-    
-#     amount = data.get("amount")
-
-#     if status != "success":
-#         raise HTTPException(status_code=402, detail="Payment not successful")
-#     if paid_email and paid_email != expected_email.lower():
-#         raise HTTPException(status_code=400, detail="Payment record does not match provided email")
-#     # Lock the price to exactly ₦2490 (which is 245000 kobo)
-#     if amount != 245000:
-#         raise HTTPException(status_code=400, detail="Incorrect payment amount")
-
-
-# def verify_paystack_payment(reference: str) -> None:
-#     if not PAYSTACK_SECRET_KEY:
-#         raise HTTPException(status_code=500, detail="Paystack secret is not configured")
-
-#     headers = {"Authorization": "Bearer " + PAYSTACK_SECRET_KEY}
-#     try:
-#         response = requests.get(
-#             PAYSTACK_VERIFY_URL.format(reference=reference),
-#             headers=headers,
-#             timeout=30,
-#         )
-#         response.raise_for_status()
-#         payload = response.json()
-#     except requests.RequestException as exc:
-#         logger.exception("Paystack verification failed")
-#         raise HTTPException(status_code=502, detail="Payment provider unavailable") from exc
-
-#     data: dict[str, Any] = payload.get("data") or {}
-#     status = (data.get("status") or "").strip().lower()
-#     amount = data.get("amount")
-
-#     if status != "success":
-#         raise HTTPException(status_code=402, detail="Payment not successful")
-        
-#     # Lock the price to exactly ₦2,490 (which is 245000 kobo)
-#     if amount < 245000:
-#         raise HTTPException(status_code=400, detail="Incorrect payment amount")
 
 
 
@@ -192,96 +216,16 @@ def verify_paystack_payment(reference: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Incorrect payment amount. Expected at least {EXPECTED_AMOUNT_KOBO} kobo, got {amount} kobo.")
     
     
-
     
-    # FIX 3: Return the data
-    # You should return the 'data' dictionary so the calling function can extract 
-    # the customer's email and mark THIS specific reference as 'used' in your database.
+    # Log the metadata so you can see it in your server logs too
+    metadata = data.get("metadata") or {}
+    logger.info("Paystack metadata for %s: %s", reference, json.dumps(metadata))
+    
     return data
 
 
 
 
-# def _process_report(job_id: str, request: ReportRequest) -> None:
-#     _set_job_state(job_id, "processing", "Generating screenshots")
-
-#     try:
-#         with tempfile.TemporaryDirectory(prefix="giscopo-") as temp_dir:
-#             images = generate_report_images(request.location, temp_dir)
-
-#             _set_job_state(job_id, "processing", "Compiling PDF report")
-#             with open(images["satellite"], "rb") as sat_file, open(images["qgis"], "rb") as qgis_file:
-#                 sat_b64 = base64.b64encode(sat_file.read()).decode("utf-8")
-#                 qgis_b64 = base64.b64encode(qgis_file.read()).decode("utf-8")
-
-                
-#                 # Unpack all 3 images
-#                 sat_b64, qgis_b64, final_layout_b64 = generate_report_images(request.location, temp_dir)
-            
-
-#             # 1. Generate the unique, personalized text via GitHub Models
-#             _set_job_state(job_id, "processing", "AI generating academic content...")
-#             dynamic_text = generate_dynamic_sections(request.location, request.department)
-
-            
-#             # 2. Build the PDF, injecting both the images and the new AI text
-#             _set_job_state(job_id, "processing", "Compiling PDF report...")
-#             pdf_bytes = build_report_pdf(
-#                 {
-#                     "full_name": request.full_name,
-#                     "student_id": request.student_id,
-#                     "department": request.department,
-#                     "location": request.location,
-#                     "generated_date": datetime.now(timezone.utc).strftime("%d %B %Y"),
-#                     "satellite_image_b64": sat_b64,
-#                     "qgis_image_b64": qgis_b64,
-#                     "final_layout_b64": final_layout_b64,
-#                     # INJECT THE DYNAMIC AI SECTIONS HERE:
-#                     "overview": dynamic_text.get("overview", ""),
-#                     "data_description": dynamic_text.get("data_description", ""),
-#                     "methodology": dynamic_text.get("methodology", ""),
-#                     "discussion": dynamic_text.get("discussion", ""),
-#                     "conclusion": dynamic_text.get("conclusion", ""),
-#                 }
-#             )
-
-#             # pdf_bytes = build_report_pdf(
-#             #     {
-#             #         "full_name": request.full_name,
-#             #         "student_id": request.student_id,
-#             #         "department": request.department,
-#             #         "email": request.email,
-#             #         "location": request.location,
-#             #         "generated_date": datetime.now(timezone.utc).strftime("%d %B %Y"),
-#             #         "satellite_image_b64": sat_b64,
-#             #         "qgis_image_b64": qgis_b64,
-#             #     }
-#             # )
-
-#             _set_job_state(job_id, "processing", "Sending report email")
-#             send_report_email(
-#                 EmailPayload(
-#                     recipient=request.email,
-#                     subject=f"Your GIS Academic Report - {request.location}",
-#                     body=(
-#                         f"Hello {request.full_name},\n\n"
-#                         "Attached is your personalized GIS report in PDF format.\n\n"
-#                         "Regards,\nGISCOPO Team"
-#                     ),
-#                     attachment_filename="gis_report.pdf",
-#                     attachment_bytes=pdf_bytes,
-#                 )
-#             )
-#     except (ScreenshotEngineError, PDFGenerationError, MailerError) as exc:
-#         logger.exception("Pipeline failed for job %s", job_id)
-#         _set_job_state(job_id, "failed", str(exc))
-#         return
-#     except Exception as exc:  # pragma: no cover - fallback handler
-#         logger.exception("Unexpected pipeline failure for job %s", job_id)
-#         _set_job_state(job_id, "failed", "Unexpected error occurred")
-#         return
-
-#     _set_job_state(job_id, "completed", "Report generated and delivered")
 
 
 def _process_report(job_id: str, request: ReportRequest) -> None:
@@ -358,6 +302,15 @@ def get_paystack_config() -> dict[str, str]:
     if not PAYSTACK_PUBLIC_KEY:
         raise HTTPException(status_code=500, detail="Paystack public key is not configured")
     return {"public_key": PAYSTACK_PUBLIC_KEY}
+
+
+
+
+
+
+
+
+
 
 
 # @app.post("/api/generate-report")
