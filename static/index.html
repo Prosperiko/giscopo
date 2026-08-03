@@ -29,140 +29,9 @@
     </div>
   </main>
 
-  <!-- <script>
-    const form = document.getElementById('reportForm');
-    const statusEl = document.getElementById('status');
-    const amountKobo = 300000;
 
-    async function getPaystackKey() {
-      const response = await fetch('/api/paystack-config');
-      if (!response.ok) {
-        throw new Error('Unable to load payment config.');
-      }
-      const data = await response.json();
-      return data.public_key;
-    }
-
-    async function sendGenerateRequest(payload) {
-      const response = await fetch('/api/generate-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || 'Report generation failed');
-      }
-      return data;
-    }
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const formData = new FormData(form);
-      const payload = Object.fromEntries(formData.entries());
-      statusEl.textContent = 'Initializing payment...';
-
-      try {
-        const paystackKey = await getPaystackKey();
-        const handler = PaystackPop.setup({
-          key: paystackKey,
-          email: payload.email,
-          amount: amountKobo,
-          currency: 'NGN',
-          callback: async function(response) {
-            statusEl.textContent = 'Payment successful. Starting report generation...';
-            try {
-              const result = await sendGenerateRequest({
-                ...payload,
-                payment_reference: response.reference
-              });
-              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
-            } catch (error) {
-              statusEl.textContent = error.message;
-            }
-          },
-          onClose: function() {
-            statusEl.textContent = 'Payment window closed.';
-          }
-        });
-
-        handler.openIframe();
-      } catch (error) {
-        statusEl.textContent = error.message;
-      }
-    });
-  </script> -->
-
-  <!-- <script>
-    const form = document.getElementById('reportForm');
-    const statusEl = document.getElementById('status');
-    const amountKobo = 245000; // 2,450 NGN
-
-    async function getPaystackKey() {
-      const response = await fetch('/api/paystack-config');
-      if (!response.ok) {
-        throw new Error('Unable to load payment config.');
-      }
-      const data = await response.json();
-      return data.public_key;
-    }
-
-    async function sendGenerateRequest(payload) {
-      const response = await fetch('/api/generate-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || 'Report generation failed');
-      }
-      return data;
-    }
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const formData = new FormData(form);
-      const payload = Object.fromEntries(formData.entries());
-      statusEl.textContent = 'Initializing payment...';
-
-      try {
-        const paystackKey = await getPaystackKey();
-        
-        const handler = PaystackPop.setup({
-          key: paystackKey,
-          email: payload.email,
-          amount: amountKobo,
-          currency: 'NGN',
-          // CHANGED: Removed "async" so Paystack accepts it as a valid function
-          callback: function(response) {
-            statusEl.textContent = 'Payment successful. Starting report generation...';
-            
-            // Handle the asynchronous API call inside the standard function
-            sendGenerateRequest({
-              ...payload,
-              payment_reference: response.reference
-            })
-            .then(result => {
-              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
-            })
-            .catch(error => {
-              statusEl.textContent = error.message;
-            });
-          },
-          onClose: function() {
-            statusEl.textContent = 'Payment window closed.';
-          }
-        });
-
-        handler.openIframe();
-      } catch (error) {
-        statusEl.textContent = error.message;
-      }
-    });
-  </script> -->
     
-  <script>
+  <!-- <script>
     const form = document.getElementById('reportForm');
     const statusEl = document.getElementById('status');
     const amountKobo = 245000; // ₦2,450
@@ -223,6 +92,16 @@
         // STEP 1: Backend creates the transaction with metadata
         const initData = await initializePaystack(payload);
         
+        console.log("INIT RESPONSE:", initData);  // ADD THIS
+
+        if (!initData.access_code) {
+          statusEl.textContent = "Backend failed to create transaction. Check console.";
+          console.error("No access_code received!", initData);
+          return;
+        }
+
+
+
         // STEP 2: Open Paystack using the access_code from backend
         const handler = PaystackPop.setup({
           key: paystackKey,
@@ -251,7 +130,159 @@
         statusEl.textContent = error.message;
       }
     });
+  </script> -->
+
+
+
+<!-- 
+  <script>
+    const form = document.getElementById('reportForm');
+    const statusEl = document.getElementById('status');
+    const amountKobo = 245000;
+
+    async function getPaystackKey() {
+      const response = await fetch('/api/paystack-config');
+      if (!response.ok) throw new Error('Unable to load payment config.');
+      const data = await response.json();
+      return data.public_key;
+    }
+
+    async function sendGenerateRequest(payload) {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Report generation failed');
+      return data;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      statusEl.textContent = 'Initializing payment...';
+
+      try {
+        const paystackKey = await getPaystackKey();
+
+        const handler = PaystackPop.setup({
+          key: paystackKey,
+          email: payload.email,
+          amount: amountKobo,
+          currency: 'NGN',
+          // METADATA goes here — Paystack will show this on your dashboard
+          metadata: {
+            custom_fields: [
+              {display_name: "Full Name", variable_name: "full_name", value: payload.full_name},
+              {display_name: "Student ID", variable_name: "student_id", value: payload.student_id},
+              {display_name: "Department", variable_name: "department", value: payload.department},
+              {display_name: "Location", variable_name: "location", value: payload.location},
+              {display_name: "Coordinates", variable_name: "coordinates", value: payload.coordinates || "N/A"},
+            ]
+          },
+          callback: async function(response) {
+            statusEl.textContent = 'Payment successful. Starting report generation...';
+            try {
+              const result = await sendGenerateRequest({
+                ...payload,
+                payment_reference: response.reference
+              });
+              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
+            } catch (error) {
+              statusEl.textContent = error.message;
+            }
+          },
+          onClose: function() {
+            statusEl.textContent = 'Payment window closed.';
+          }
+        });
+
+        handler.openIframe();
+      } catch (error) {
+        console.error("Payment error:", error);
+        statusEl.textContent = error.message;
+      }
+    });
+  </script> -->
+
+
+
+  <script>
+    const form = document.getElementById('reportForm');
+    const statusEl = document.getElementById('status');
+    const amountKobo = 245000;
+
+    async function getPaystackKey() {
+      const response = await fetch('/api/paystack-config');
+      if (!response.ok) throw new Error('Unable to load payment config.');
+      const data = await response.json();
+      return data.public_key;
+    }
+
+    async function sendGenerateRequest(payload) {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Report generation failed');
+      return data;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      statusEl.textContent = 'Initializing payment...';
+
+      try {
+        const paystackKey = await getPaystackKey();
+
+        const handler = PaystackPop.setup({
+          key: paystackKey,
+          email: payload.email,
+          amount: amountKobo,
+          currency: 'NGN',
+          // METADATA — shows on your Paystack dashboard
+          metadata: {
+            custom_fields: [
+              {display_name: "Full Name", variable_name: "full_name", value: payload.full_name},
+              {display_name: "Student ID", variable_name: "student_id", value: payload.student_id},
+              {display_name: "Department", variable_name: "department", value: payload.department},
+              {display_name: "Location", variable_name: "location", value: payload.location},
+              {display_name: "Coordinates", variable_name: "coordinates", value: payload.coordinates || "N/A"},
+            ]
+          },
+          // CRITICAL: Must be a regular function, NOT async
+          callback: function(response) {
+            statusEl.textContent = 'Payment successful. Starting report generation...';
+            
+            sendGenerateRequest({
+              ...payload,
+              payment_reference: response.reference
+            })
+            .then(result => {
+              statusEl.textContent = `${result.message} Job ID: ${result.job_id}`;
+            })
+            .catch(error => {
+              statusEl.textContent = error.message;
+            });
+          },
+          onClose: function() {
+            statusEl.textContent = 'Payment window closed.';
+          }
+        });
+
+        handler.openIframe();
+      } catch (error) {
+        statusEl.textContent = error.message;
+      }
+    });
   </script>
+
 
 
 </body>

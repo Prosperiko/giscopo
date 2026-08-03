@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 import random
 import base64
 
+import time
+
+
 import certifi
 import os
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -82,34 +85,147 @@ class ScreenshotEngineError(RuntimeError):
 
 
 
-def _parse_location(coordinates: str) -> tuple[float, float]:
+# def _parse_location(coordinates: str) -> tuple[float, float]:
+#     # 1. Raw coordinates bypass everything
+#     coord_pattern = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
+#     match = coord_pattern.match(coordinates)
+#     if match:
+#         lat, lng = float(match.group(1)), float(match.group(2))
+#         if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+#             raise ScreenshotEngineError("Coordinates out of valid range")
+#         return lat, lng
+
+#     # 2. KNOWN LOCATIONS fast-path (never fails, instant, exact)
+#     # Add common UNIBEN spots here to skip geocoding entirely
+#     known = {
+#         "faculty of engineering, university of benin": (6.401852, 5.615612),
+#         "faculty of engineering, uniben": (6.401852, 5.615612),
+#         "uniben": (6.401852, 5.615612),
+#         "university of benin": (6.401852, 5.615612),
+#         "main gate, uniben": (6.397500, 5.623000),
+#         "computer science, uniben": (6.403500, 5.618000),
+#     }
+#     lookup = coordinates.lower().strip().rstrip(",").rstrip(".")
+#     if lookup in known:
+#         return known[lookup]
+
+#     # 3. OpenStreetMap with Nigeria restriction + Benin City bias
+#     search_query = coordinates
+#     if "nigeria" not in search_query.lower():
+#         search_query = f"{coordinates}, Nigeria"
+
+#     try:
+#         response = requests.get(
+#             "https://nominatim.openstreetmap.org/search",
+#             params={
+#                 "q": search_query,
+#                 "format": "json",
+#                 "limit": 1,
+#                 "countrycodes": "ng",           # <-- CRITICAL: lock to Nigeria only
+#                 "accept-language": "en",
+#                 "addressdetails": 1,
+#                 # Bias to Benin City area (left, top, right, bottom)
+#                 "viewbox": "5.50,6.30,5.80,6.50",
+#                 "bounded": 0,  # 0 = bias, 1 = strict. Use bias so non-Benin queries still work.
+#             },
+#             headers={"User-Agent": "giscopo-academic-app/1.0"},
+#             timeout=15,
+#         )
+#         response.raise_for_status()
+#         data = response.json()
+#         if data:
+#             lat = float(data[0]["lat"])
+#             lng = float(data[0]["lon"])
+            
+#             # VALIDATION: if user mentioned Benin/UNIBEN, result MUST be near Benin City
+#             if any(k in coordinates.lower() for k in ["benin", "uniben"]):
+#                 # Benin City is roughly lat 6.3-6.5, lng 5.5-5.8
+#                 if not (6.2 <= lat <= 6.6 and 5.4 <= lng <= 5.9):
+#                     print(f"  ⚠️  OSM returned suspicious coords ({lat}, {lng}) for Benin query. Falling back...")
+#                     raise ScreenshotEngineError("OSM result outside Benin City")
+            
+#             return lat, lng
+#     except ScreenshotEngineError:
+#         raise  # Re-raise our own validation errors
+#     except Exception as e:
+#         print(f"  ⚠️  OSM failed: {e}")
+
+#     # 4. FALLBACK: Mapbox (also restricted to Nigeria)
+#     token = os.getenv("MAPBOX_ACCESS_TOKEN", "").strip()
+#     if not token:
+#         raise ScreenshotEngineError("Missing Mapbox token in .env file")
+
+#     try:
+#         encoded_query = urllib.parse.quote(search_query)
+#         url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{encoded_query}.json"
+        
+#         response = requests.get(
+#             url,
+#             params={"access_token": token, "limit": 1, "country": "ng"},
+#             timeout=15,
+#         )
+#         response.raise_for_status()
+#         data = response.json()
+        
+#         if data.get("features"):
+#             lng, lat = data["features"][0]["center"]
+#             return float(lat), float(lng)
+            
+#     except requests.RequestException as e:
+#         print(f"  ⚠️  Mapbox failed: {e}")
+        
+#     raise ScreenshotEngineError(f"Unable to resolve coordinates: {location}")
+
+
+def _parse_location(location: str) -> tuple[float, float]:
     # 1. Raw coordinates bypass everything
     coord_pattern = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
-    match = coord_pattern.match(coordinates)
+    match = coord_pattern.match(location)
     if match:
         lat, lng = float(match.group(1)), float(match.group(2))
         if not (-90 <= lat <= 90 and -180 <= lng <= 180):
             raise ScreenshotEngineError("Coordinates out of valid range")
         return lat, lng
 
-    # 2. KNOWN LOCATIONS fast-path (never fails, instant, exact)
-    # Add common UNIBEN spots here to skip geocoding entirely
+    # 2. KNOWN LOCATIONS — exact coordinates, zero API calls, never fails
+    # Add every common location your users search for here
     known = {
+        # UNIBEN
         "faculty of engineering, university of benin": (6.401852, 5.615612),
         "faculty of engineering, uniben": (6.401852, 5.615612),
         "uniben": (6.401852, 5.615612),
         "university of benin": (6.401852, 5.615612),
         "main gate, uniben": (6.397500, 5.623000),
         "computer science, uniben": (6.403500, 5.618000),
+        "library, uniben": (6.400000, 5.620000),
+        "uniben gym": (6.404000, 5.617000),
+        "akindeko auditorium, uniben": (6.398500, 5.614000),
+        
+        # Benin City general
+        "ring road, benin city": (6.335000, 5.603000),
+        "ring road benin": (6.335000, 5.603000),
+        "benin city": (6.335000, 5.603000),
+        "benin": (6.335000, 5.603000),
+        "kings square, benin city": (6.335500, 5.603500),
+        "sapele road, benin city": (6.340000, 5.580000),
+        "airport road, benin city": (6.320000, 5.620000),
+        "ugbowo, benin city": (6.395000, 5.630000),
+        "ekewan road, benin city": (6.330000, 5.610000),
     }
-    lookup = coordinates.lower().strip().rstrip(",").rstrip(".")
+    
+    lookup = location.lower().strip().rstrip(",").rstrip(".")
+    # Also try without "nigeria" suffix if user added it
+    lookup_clean = lookup.replace(", nigeria", "").replace(",nigeria", "")
+    
     if lookup in known:
         return known[lookup]
+    if lookup_clean in known:
+        return known[lookup_clean]
 
-    # 3. OpenStreetMap with Nigeria restriction + Benin City bias
-    search_query = coordinates
+    # 3. OpenStreetMap with STRICT validation
+    search_query = location
     if "nigeria" not in search_query.lower():
-        search_query = f"{coordinates}, Nigeria"
+        search_query = f"{location}, Nigeria"
 
     try:
         response = requests.get(
@@ -118,12 +234,8 @@ def _parse_location(coordinates: str) -> tuple[float, float]:
                 "q": search_query,
                 "format": "json",
                 "limit": 1,
-                "countrycodes": "ng",           # <-- CRITICAL: lock to Nigeria only
+                "countrycodes": "ng",  # Lock to Nigeria
                 "accept-language": "en",
-                "addressdetails": 1,
-                # Bias to Benin City area (left, top, right, bottom)
-                "viewbox": "5.50,6.30,5.80,6.50",
-                "bounded": 0,  # 0 = bias, 1 = strict. Use bias so non-Benin queries still work.
             },
             headers={"User-Agent": "giscopo-academic-app/1.0"},
             timeout=15,
@@ -134,20 +246,20 @@ def _parse_location(coordinates: str) -> tuple[float, float]:
             lat = float(data[0]["lat"])
             lng = float(data[0]["lon"])
             
-            # VALIDATION: if user mentioned Benin/UNIBEN, result MUST be near Benin City
-            if any(k in coordinates.lower() for k in ["benin", "uniben"]):
-                # Benin City is roughly lat 6.3-6.5, lng 5.5-5.8
+            # STRICT VALIDATION: If query mentions Benin/Uniben, coords MUST be near Benin City
+            is_benin_query = any(k in location.lower() for k in ["benin", "uniben", "ugbowo", "ekewan", "sapele road", "airport road"])
+            if is_benin_query:
+                # Benin City is roughly lat 6.2-6.6, lng 5.4-5.9
                 if not (6.2 <= lat <= 6.6 and 5.4 <= lng <= 5.9):
-                    print(f"  ⚠️  OSM returned suspicious coords ({lat}, {lng}) for Benin query. Falling back...")
-                    raise ScreenshotEngineError("OSM result outside Benin City")
+                    print(f"  ⚠️  OSM returned WRONG coords ({lat}, {lng}) for Benin query. Forcing fallback...")
+                    # Force known Benin City center instead of failing
+                    return (6.335000, 5.603000)
             
             return lat, lng
-    except ScreenshotEngineError:
-        raise  # Re-raise our own validation errors
     except Exception as e:
         print(f"  ⚠️  OSM failed: {e}")
 
-    # 4. FALLBACK: Mapbox (also restricted to Nigeria)
+    # 4. FALLBACK: Mapbox
     token = os.getenv("MAPBOX_ACCESS_TOKEN", "").strip()
     if not token:
         raise ScreenshotEngineError("Missing Mapbox token in .env file")
@@ -155,7 +267,6 @@ def _parse_location(coordinates: str) -> tuple[float, float]:
     try:
         encoded_query = urllib.parse.quote(search_query)
         url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{encoded_query}.json"
-        
         response = requests.get(
             url,
             params={"access_token": token, "limit": 1, "country": "ng"},
@@ -163,15 +274,14 @@ def _parse_location(coordinates: str) -> tuple[float, float]:
         )
         response.raise_for_status()
         data = response.json()
-        
         if data.get("features"):
             lng, lat = data["features"][0]["center"]
             return float(lat), float(lng)
-            
-    except requests.RequestException as e:
+    except Exception as e:
         print(f"  ⚠️  Mapbox failed: {e}")
         
-    raise ScreenshotEngineError(f"Unable to resolve coordinates: {location}")
+    raise ScreenshotEngineError(f"Unable to resolve location: {location}")
+
 
 
 
@@ -327,26 +437,94 @@ def _deg2tile(lat_deg: float, lon_deg: float, zoom: int) -> tuple[int, int]:
     return xtile, ytile
 
 
-def _capture_google_earth(
-    lat: float, 
-    lng: float, 
-    out_path: str, 
-    zoom: int = 18, 
-    grid_size: int = 4
-) -> bool:
-    """
-    Fetches Google Satellite tiles and stitches them into a high-res image.
-    No labels, no icons, no UI — pure satellite imagery exactly like Google Earth web.
+# def _capture_google_earth(
+#     lat: float, 
+#     lng: float, 
+#     out_path: str, 
+#     zoom: int = 18, 
+#     grid_size: int = 4
+# ) -> bool:
+#     """
+#     Fetches Google Satellite tiles and stitches them into a high-res image.
+#     No labels, no icons, no UI — pure satellite imagery exactly like Google Earth web.
     
-    Args:
-        lat, lng: Center coordinates
-        out_path: Where to save the PNG
-        zoom: Zoom level (17-20 is good for buildings). 18 = ~0.6m/pixel
-        grid_size: How many tiles across/down (e.g., 4 = 4x4 grid = 1024x1024px)
-    """
+#     Args:
+#         lat, lng: Center coordinates
+#         out_path: Where to save the PNG
+#         zoom: Zoom level (17-20 is good for buildings). 18 = ~0.6m/pixel
+#         grid_size: How many tiles across/down (e.g., 4 = 4x4 grid = 1024x1024px)
+#     """
+#     tile_size = 256
+#     center_x, center_y = _deg2tile(lat, lng, zoom)
+    
+#     offset = grid_size // 2
+#     min_x, max_x = center_x - offset, center_x + offset
+#     min_y, max_y = center_y - offset, center_y + offset
+    
+#     canvas_width = (max_x - min_x + 1) * tile_size
+#     canvas_height = (max_y - min_y + 1) * tile_size
+#     canvas = Image.new("RGB", (canvas_width, canvas_height))
+    
+#     headers = {
+#         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+#         "Referer": "https://www.google.com/",
+#     }
+    
+#     success_count = 0
+#     total_tiles = 0
+    
+#     for x in range(min_x, max_x + 1):
+#         for y in range(min_y, max_y + 1):
+#             total_tiles += 1
+#             # Google load-balances across these subdomains
+#             server = random.choice(["mt0", "mt1", "mt2", "mt3"])
+#             # lyrs=s = satellite only (no labels, no roads, no POIs)
+#             url = f"https://{server}.google.com/vt/lyrs=s&x={x}&y={y}&z={zoom}"
+            
+#             try:
+#                 response = requests.get(url, headers=headers, timeout=15)
+#                 response.raise_for_status()
+#                 tile = Image.open(BytesIO(response.content)).convert("RGB")
+                
+#                 px = (x - min_x) * tile_size
+#                 py = (y - min_y) * tile_size
+#                 canvas.paste(tile, (px, py))
+#                 success_count += 1
+                
+#             except Exception as e:
+#                 # Grey placeholder for failed tiles so the image isn't broken
+#                 canvas.paste(
+#                     (200, 200, 200),
+#                     (
+#                         (x - min_x) * tile_size,
+#                         (y - min_y) * tile_size,
+#                         (x - min_x + 1) * tile_size,
+#                         (y - min_y + 1) * tile_size,
+#                     ),
+#                 )
+#                 print(f"  ⚠️  Tile {x},{y} failed: {e}")
+    
+#     if success_count == 0:
+#         print("All tiles failed — check your internet connection.")
+#         return False
+    
+#     # Optional: crop to the exact center area if grid is large
+#     # This keeps the file size reasonable for PDF embedding
+#     if grid_size > 3:
+#         left = tile_size
+#         top = tile_size
+#         right = canvas_width - tile_size
+#         bottom = canvas_height - tile_size
+#         canvas = canvas.crop((left, top, right, bottom))
+    
+#     canvas.save(out_path, format="PNG", optimize=True)
+#     print(f"Saved satellite image: {out_path} ({canvas.size[0]}x{canvas.size[1]} px, {success_count}/{total_tiles} tiles)")
+#     return True
+
+
+def _capture_google_earth(lat: float, lng: float, out_path: str, zoom: int = 18, grid_size: int = 4) -> bool:
     tile_size = 256
     center_x, center_y = _deg2tile(lat, lng, zoom)
-    
     offset = grid_size // 2
     min_x, max_x = center_x - offset, center_x + offset
     min_y, max_y = center_y - offset, center_y + offset
@@ -358,54 +536,49 @@ def _capture_google_earth(
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Referer": "https://www.google.com/",
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
     }
     
     success_count = 0
-    total_tiles = 0
+    total_tiles = (max_x - min_x + 1) * (max_y - min_y + 1)
     
     for x in range(min_x, max_x + 1):
         for y in range(min_y, max_y + 1):
-            total_tiles += 1
-            # Google load-balances across these subdomains
             server = random.choice(["mt0", "mt1", "mt2", "mt3"])
-            # lyrs=s = satellite only (no labels, no roads, no POIs)
             url = f"https://{server}.google.com/vt/lyrs=s&x={x}&y={y}&z={zoom}"
             
-            try:
-                response = requests.get(url, headers=headers, timeout=15)
-                response.raise_for_status()
-                tile = Image.open(BytesIO(response.content)).convert("RGB")
-                
-                px = (x - min_x) * tile_size
-                py = (y - min_y) * tile_size
-                canvas.paste(tile, (px, py))
+            # Retry failed tiles up to 3 times
+            tile_img = None
+            for attempt in range(3):
+                try:
+                    response = requests.get(url, headers=headers, timeout=15)
+                    response.raise_for_status()
+                    tile_img = Image.open(BytesIO(response.content)).convert("RGB")
+                    break  # Success, stop retrying
+                except Exception as e:
+                    if attempt < 2:
+                        time.sleep(0.5 * (attempt + 1))  # 0.5s, 1s
+                    else:
+                        print(f"  ⚠️  Tile {x},{y} failed after 3 attempts: {e}")
+            
+            px = (x - min_x) * tile_size
+            py = (y - min_y) * tile_size
+            
+            if tile_img:
+                canvas.paste(tile_img, (px, py))
                 success_count += 1
-                
-            except Exception as e:
-                # Grey placeholder for failed tiles so the image isn't broken
-                canvas.paste(
-                    (200, 200, 200),
-                    (
-                        (x - min_x) * tile_size,
-                        (y - min_y) * tile_size,
-                        (x - min_x + 1) * tile_size,
-                        (y - min_y + 1) * tile_size,
-                    ),
-                )
-                print(f"  ⚠️  Tile {x},{y} failed: {e}")
+            else:
+                # Grey placeholder for failed tiles
+                canvas.paste((200, 200, 200), (px, py, px + tile_size, py + tile_size))
     
     if success_count == 0:
         print("All tiles failed — check your internet connection.")
         return False
     
-    # Optional: crop to the exact center area if grid is large
-    # This keeps the file size reasonable for PDF embedding
+    # Optional center crop
     if grid_size > 3:
-        left = tile_size
-        top = tile_size
-        right = canvas_width - tile_size
-        bottom = canvas_height - tile_size
-        canvas = canvas.crop((left, top, right, bottom))
+        margin = tile_size
+        canvas = canvas.crop((margin, margin, canvas_width - margin, canvas_height - margin))
     
     canvas.save(out_path, format="PNG", optimize=True)
     print(f"Saved satellite image: {out_path} ({canvas.size[0]}x{canvas.size[1]} px, {success_count}/{total_tiles} tiles)")
@@ -555,7 +728,7 @@ def _image_to_base64(image_path: str) -> str:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def generate_report_images(coordinates: str, temp_dir: str) -> tuple[str, str, str]:
+def generate_report_images(coordinates: str, location: str, temp_dir: str) -> tuple[str, str, str]:
     lat, lng = _parse_location(coordinates)
 
     job_id = uuid.uuid4().hex
@@ -587,7 +760,7 @@ def generate_report_images(coordinates: str, temp_dir: str) -> tuple[str, str, s
             raise ScreenshotEngineError("Failed to download vector imagery")
 
         _compose_qgis_mock(sat_path, qgis_path, lat, lng, coordinates)
-        _compose_final_layout(vector_path, layout_path, lat, lng, coordinates)
+        _compose_final_layout(vector_path, layout_path, lat, lng, location)
 
         sat_b64 = _image_to_base64(sat_path)
         qgis_b64 = _image_to_base64(qgis_path)

@@ -6,6 +6,8 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+import time
+
 
 import requests
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -20,7 +22,6 @@ from screenshot_engine import ScreenshotEngineError, generate_report_images
 import os
 import json
 from openai import OpenAI
-import time
 
 
 
@@ -50,78 +51,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 
-
-
-
-from pydantic import BaseModel
-import json
-
-# Add this model
-class PaystackInitRequest(BaseModel):
-    email: EmailStr
-    amount: int = Field(default=245000, description="Amount in kobo. Default ₦2,450 = 245000")
-    full_name: str = Field(min_length=2, max_length=120)
-    student_id: str = Field(min_length=2, max_length=60)
-    department: str = Field(min_length=2, max_length=120)
-    location: str = Field(min_length=2, max_length=200)
-    coordinates: str = Field(default="", max_length=100)  # Your new field
-
-
-PAYSTACK_INIT_URL = "https://api.paystack.co/transaction/initialize"
-
-
-@app.post("/api/paystack-initialize")
-def initialize_paystack(payload: PaystackInitRequest) -> dict[str, Any]:
-    """
-    Creates a Paystack transaction with user metadata attached.
-    Returns an access_code for Paystack Pop OR an authorization_url for redirect.
-    """
-    if not PAYSTACK_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="Paystack secret key is not configured")
-
-    headers = {
-        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    # This metadata appears on your Paystack dashboard under Transaction Details
-    body = {
-        "email": payload.email,
-        "amount": payload.amount,
-        "metadata": {
-            # custom_fields is what Paystack renders nicely on the dashboard UI
-            "custom_fields": [
-                {"display_name": "Full Name", "variable_name": "full_name", "value": payload.full_name},
-                {"display_name": "Student ID", "variable_name": "student_id", "value": payload.student_id},
-                {"display_name": "Department", "variable_name": "department", "value": payload.department},
-                {"display_name": "Location", "variable_name": "location", "value": payload.location},
-                {"display_name": "Coordinates", "variable_name": "coordinates", "value": payload.coordinates or "N/A"},
-            ],
-            # You can also add flat key-value pairs for your own internal tracking
-            "report_location": payload.location,
-            "report_coordinates": payload.coordinates,
-        },
-        # Optional: set a callback URL so Paystack redirects back to your site after payment
-        # "callback_url": "https://yourdomain.com/payment-success",
-    }
-
-    try:
-        response = requests.post(PAYSTACK_INIT_URL, headers=headers, json=body, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as exc:
-        logger.exception("Paystack initialization failed")
-        raise HTTPException(status_code=502, detail="Payment provider unavailable") from exc
-
-    if not data.get("status"):
-        raise HTTPException(status_code=400, detail=data.get("message", "Paystack init failed"))
-
-    return {
-        "status": "success",
-        "authorization_url": data["data"]["authorization_url"],
-        "access_code": data["data"]["access_code"],
-        "reference": data["data"]["reference"],
-    }
 
 
 
@@ -236,7 +165,8 @@ def _process_report(job_id: str, request: ReportRequest) -> None:
             # ONLY CALL THIS ONCE
             # Since the updated function already handles the base64 conversion, 
             # we just unpack the three strings directly!
-            sat_b64, qgis_b64, final_layout_b64 = generate_report_images(request.location, temp_dir)
+            coords_to_use = request.coordinates if request.coordinates else request.location
+            sat_b64, qgis_b64, final_layout_b64 = generate_report_images(coords_to_use, request.location, temp_dir)
 
         # 1. Generate the unique, personalized text via GitHub Models
         _set_job_state(job_id, "processing", "AI generating academic content...")
@@ -366,6 +296,8 @@ def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -
     _set_job_state(job_id, "queued", "Report request accepted")
     background_tasks.add_task(_process_report, job_id, payload)
 
+    _process_report(job_id, payload)
+    
     return {
         "job_id": job_id,
         "status": "queued",
@@ -909,20 +841,7 @@ def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
     logging.error("CRITICAL: All AI models failed. Falling back to default text.")
     return _get_fallback_text(location)
 
-def _get_fallback_text(location: str):
-    return {
-        "overview": f"System error. Unable to generate overview for {location}.",
-        "data_description": "Data description unavailable.",
-        "methodology": "Methodology unavailable.",
-        "discussion": "Discussion unavailable.",
-        "conclusion": "Conclusion unavailable."
-    }
 
-if __name__ == "__main__":
-    print("\n--- Starting Fallback Test ---")
-    result = generate_dynamic_sections("Lagos", "Urban Planning")
-    print("\nFinal Result Keys:", result.keys())
-    print("--- Test Complete ---\n")
 
 
 
