@@ -278,7 +278,7 @@ def get_paystack_config() -> dict[str, str]:
 
 
 @app.post("/api/generate-report")
-def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+def generate_report(payload: ReportRequest) -> dict[str, str]:
     
     # Bypass Paystack during local backend testing
     
@@ -306,14 +306,15 @@ def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -
 
     job_id = str(uuid.uuid4())
     _set_job_state(job_id, "queued", "Report request accepted")
-    background_tasks.add_task(_process_report, job_id, payload)
+    # background_tasks.add_task(_process_report, job_id, payload)
+    _process_report(job_id, payload)
 
     
     
     return {
         "job_id": job_id,
-        "status": "queued",
-        "message": "Payment verified. Your report is being prepared and will be sent via email shortly.",
+        "status": "completed",
+        "message": "Payment verified. Your report is beFing prepared and will be sent via email shortly.",
     }
 
 
