@@ -345,10 +345,30 @@ def _send_with_resend(payload: EmailPayload, max_retries: int = 3) -> None:
 
 def send_report_email(payload: EmailPayload) -> None:
     provider = os.getenv("MAIL_PROVIDER", "sendgrid").strip().lower()
+    logging.info("Preparing to send email using provider=%s to=%s", provider, payload.recipient)
+
+    # Quick sanity checks to make diagnosing production failures easier
+    if provider == "resend":
+        if not os.getenv("RESEND_API_KEY"):
+            logging.error("RESEND_API_KEY not set while MAIL_PROVIDER=resend")
+            raise MailerError("Resend provider selected but RESEND_API_KEY is not configured")
+    else:
+        # default to SendGrid
+        if not os.getenv("SENDGRID_API_KEY"):
+            logging.error("SENDGRID_API_KEY not set while MAIL_PROVIDER=%s", provider)
+            raise MailerError("SendGrid provider selected but SENDGRID_API_KEY is not configured")
+
     try:
         if provider == "resend":
             _send_with_resend(payload)
             return
         _send_with_sendgrid(payload)
+    except MailerError:
+        # Re-raise our domain-specific error
+        raise
     except requests.RequestException as exc:
+        logging.exception("Network error while sending email to %s", payload.recipient)
         raise MailerError("Email provider unavailable") from exc
+    except Exception as exc:
+        logging.exception("Unexpected error while sending email to %s", payload.recipient)
+        raise MailerError(str(exc)) from exc

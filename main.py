@@ -115,8 +115,8 @@ def _set_job_state(job_id: str, status: str, message: str) -> None:
 #         raise HTTPException(status_code=402, detail="Payment not successful")
 #     if paid_email and paid_email != expected_email.lower():
 #         raise HTTPException(status_code=400, detail="Payment record does not match provided email")
-#     # Lock the price to exactly ₦2490 (which is 252792 kobo)
-#     if amount != 252792:
+#     # Lock the price to exactly ₦2490 (which is 245000 kobo)
+#     if amount != 245000:
 #         raise HTTPException(status_code=400, detail="Incorrect payment amount")
 
 
@@ -144,8 +144,8 @@ def _set_job_state(job_id: str, status: str, message: str) -> None:
 #     if status != "success":
 #         raise HTTPException(status_code=402, detail="Payment not successful")
         
-#     # Lock the price to exactly ₦2,490 (which is 252792 kobo)
-#     if amount < 252792:
+#     # Lock the price to exactly ₦2,490 (which is 245000 kobo)
+#     if amount < 245000:
 #         raise HTTPException(status_code=400, detail="Incorrect payment amount")
 
 
@@ -172,19 +172,21 @@ def verify_paystack_payment(reference: str) -> dict[str, Any]:
     status = (data.get("status") or "").strip().lower()
     
     # FIX 1: Provide a default fallback of 0 so `amount` is never None. 
-    # If `amount` is None, `None < 252792` will crash the server with a TypeError.
+    # If `amount` is None, `None < 245000` will crash the server with a TypeError.
     amount = data.get("amount") or 0
 
     if status != "success":
         raise HTTPException(status_code=402, detail="Payment not successful")
         
-    # FIX 2: Exact Match vs Less Than
-    # Paystack handles math in Kobo. 
-    # If the user pays ₦2,527.92 (₦2,490 + Paystack fees), the kobo value is 252792.
-    # It is safer to use `!=` instead of `<` to prevent overpayment edge cases,
-    # or explicitly allow overpayment but catch underpayment.    
-    EXPECTED_AMOUNT_KOBO = 245000
-    
+    # Prefer to read the expected amount from an environment variable so deployments
+    # can tune price without changing code. Default to the common kobo value
+    # (₦2,450.00 -> 245000) used elsewhere in comments if not provided.
+    try:
+        EXPECTED_AMOUNT_KOBO = int(os.getenv("PAYSTACK_EXPECTED_AMOUNT_KOBO", "245000"))
+    except Exception:
+        EXPECTED_AMOUNT_KOBO = 245000
+
+    # Require at least the expected amount (allow small overpayment due to fees)
     if amount < EXPECTED_AMOUNT_KOBO:
         # 400 Bad Request is correct here
         raise HTTPException(status_code=400, detail=f"Incorrect payment amount. Expected at least {EXPECTED_AMOUNT_KOBO} kobo, got {amount} kobo.")
@@ -394,8 +396,18 @@ def get_paystack_config() -> dict[str, str]:
 def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
     
     # Bypass Paystack during local backend testing
+    payment_data = None
     if payload.payment_reference != "test_bypass":
-        verify_paystack_payment(payload.payment_reference)
+        # Verify payment and grab the provider response so we can log and check
+        payment_data = verify_paystack_payment(payload.payment_reference)
+        paid_email = ((payment_data.get("customer") or {}).get("email") or "").strip().lower()
+        amount = payment_data.get("amount", 0)
+        logger.info("Paystack verification success reference=%s paid_email=%s amount=%s", payload.payment_reference, paid_email, amount)
+
+        # Allow mismatches (e.g., paying with personal email, receiving on school email)
+        if paid_email and paid_email != payload.email.lower():
+            logger.info("Email mismatch noted: Paid with %s, delivering to %s", paid_email, payload.email)
+
 
     job_id = str(uuid.uuid4())
     _set_job_state(job_id, "queued", "Report request accepted")
