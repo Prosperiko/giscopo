@@ -860,7 +860,9 @@ def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
     # The Mega-Prompt
     prompt = (
         f"You are a senior academic assistant helping a {department} student write an exhaustive, highly technical GIS report for {location}. "
-        "Your primary directive is EXTREME LENGTH and DEPTH. You MUST write at least 100 words and no more than 160 words for EVERY SINGLE SECTION. Do not write short summaries. "
+        "Your primary directive is EXTREME LENGTH and DEPTH. You MUST write at least 100 words and no more than 200 words for EVERY SINGLE SECTION. Do not write short summaries. "
+        "Do not write less than 90 words under any circumstances. Keep the content dense and highly technical, consisting of exactly 4 to 6 long sentences per section, focusing on theoretical backgrounds and geomatics methodologies without unnecessary filler. "
+
         "Expand heavily on theoretical backgrounds, practical implications, civil engineering considerations, and geomatics methodologies. "
         "In the 'overview', discuss the extensive history of urbanization, infrastructure sprawl, and spatial planning challenges in the area. "
         "In 'data_description', thoroughly detail raster resolution, coordinate systems (WGS 84, UTM Zone 31N), and complex database schema topologies. "
@@ -870,7 +872,7 @@ def generate_dynamic_sections(location: str, department: str) -> dict[str, str]:
         "'overview', 'data_description', 'methodology', 'discussion', 'conclusion'."
     )
 
-    max_retries = 2
+    max_retries = 3
     base_delay = 1.0
 
     # --- PRIMARY ATTEMPT: GROQ ---
