@@ -149,7 +149,7 @@ def _send_with_sendgrid(payload: EmailPayload) -> None:
         "https://api.sendgrid.com/v3/mail/send",
         json=body,
         headers=headers,
-        timeout=30,
+        timeout=90,
     )
     if response.status_code >= 300:
         try:
