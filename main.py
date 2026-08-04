@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -91,6 +92,8 @@ class JobStatus(BaseModel):
 
 
 JOB_STATE: dict[str, JobStatus] = {}
+REFS_LOCK = threading.Lock()
+IN_FLIGHT_REFS: set[str] = set()
 
 
 
@@ -242,13 +245,32 @@ def _process_report(job_id: str, request: ReportRequest) -> None:
     except (ScreenshotEngineError, PDFGenerationError, MailerError) as exc:
         logger.exception("Pipeline failed for job %s", job_id)
         _set_job_state(job_id, "failed", str(exc))
+        if request.payment_reference != "test_bypass":
+            with REFS_LOCK:
+                IN_FLIGHT_REFS.discard(request.payment_reference)
         return
     except Exception as exc:  # pragma: no cover - fallback handler
         logger.exception("Unexpected pipeline failure for job %s", job_id)
         _set_job_state(job_id, "failed", "Unexpected error occurred")
+        if request.payment_reference != "test_bypass":
+            with REFS_LOCK:
+                IN_FLIGHT_REFS.discard(request.payment_reference)
         return
 
+    if request.payment_reference != "test_bypass":
+        # Only mark payment as processed after successful end-to-end delivery.
+        with REFS_LOCK:
+            PROCESSED_REFS.add(request.payment_reference)
+            try:
+                _save_processed_refs(PROCESSED_REFS)
+            except Exception:
+                logger.exception("Failed to persist processed reference: %s", request.payment_reference)
+
     _set_job_state(job_id, "completed", "Report generated and delivered")
+
+    if request.payment_reference != "test_bypass":
+        with REFS_LOCK:
+            IN_FLIGHT_REFS.discard(request.payment_reference)
 
 
 
@@ -306,44 +328,49 @@ def get_paystack_config() -> dict[str, str]:
 
 
 @app.post("/api/generate-report")
-def generate_report(payload: ReportRequest) -> dict[str, str]:
+def generate_report(payload: ReportRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
     
     # Bypass Paystack during local backend testing
     
-    # 🔒 BLOCK DUPLICATE REFERENCES IMMEDIATELY
-    if payload.payment_reference in PROCESSED_REFS:
-        logger.warning("Duplicate request blocked for reference: %s", payload.payment_reference)
-        raise HTTPException(status_code=409, detail="This payment has already been processed. Check your email.")
-    
-    if payload.payment_reference in PROCESSED_REFS:
-        raise HTTPException(status_code=409, detail="This payment has already been processed. Check your email.")
+    if payload.payment_reference != "test_bypass":
+        with REFS_LOCK:
+            # Block both completed and currently-running references.
+            if payload.payment_reference in PROCESSED_REFS:
+                logger.warning("Duplicate request blocked for reference: %s", payload.payment_reference)
+                raise HTTPException(status_code=409, detail="This payment has already been processed. Check your email.")
+            if payload.payment_reference in IN_FLIGHT_REFS:
+                logger.warning("In-flight duplicate blocked for reference: %s", payload.payment_reference)
+                raise HTTPException(status_code=409, detail="This payment is already being processed. Check your email shortly.")
+            IN_FLIGHT_REFS.add(payload.payment_reference)
     
     payment_data = None
     if payload.payment_reference != "test_bypass":
-        # Verify payment and grab the provider response so we can log and check
-        payment_data = verify_paystack_payment(payload.payment_reference)
-        paid_email = ((payment_data.get("customer") or {}).get("email") or "").strip().lower()
-        amount = payment_data.get("amount", 0)
-        logger.info("Paystack verification success reference=%s paid_email=%s amount=%s", payload.payment_reference, paid_email, amount)
+        try:
+            # Verify payment and grab the provider response so we can log and check
+            payment_data = verify_paystack_payment(payload.payment_reference)
+            paid_email = ((payment_data.get("customer") or {}).get("email") or "").strip().lower()
+            amount = payment_data.get("amount", 0)
+            logger.info("Paystack verification success reference=%s paid_email=%s amount=%s", payload.payment_reference, paid_email, amount)
 
-        # Allow mismatches (e.g., paying with personal email, receiving on school email)
-        if paid_email and paid_email != payload.email.lower():
-            logger.info("Email mismatch noted: Paid with %s, delivering to %s", paid_email, payload.email)
-
-    PROCESSED_REFS.add(payload.payment_reference)
-    _save_processed_refs(PROCESSED_REFS)
+            # Allow mismatches (e.g., paying with personal email, receiving on school email)
+            if paid_email and paid_email != payload.email.lower():
+                logger.info("Email mismatch noted: Paid with %s, delivering to %s", paid_email, payload.email)
+        except Exception:
+            # Release lock so a failed verify can be retried.
+            with REFS_LOCK:
+                IN_FLIGHT_REFS.discard(payload.payment_reference)
+            raise
 
     job_id = str(uuid.uuid4())
     _set_job_state(job_id, "queued", "Report request accepted")
-    # background_tasks.add_task(_process_report, job_id, payload)
-    _process_report(job_id, payload)
+    background_tasks.add_task(_process_report, job_id, payload)
 
     
     
     return {
         "job_id": job_id,
-        "status": "completed",
-        "message": "Payment verified. Your report is beFing prepared and will be sent via email shortly.",
+        "status": "queued",
+        "message": "Payment verified. Your report is being prepared and will be sent via email shortly.",
     }
 
 

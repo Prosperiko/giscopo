@@ -17,7 +17,7 @@ Open `http://localhost:8000`.
 - `PAYSTACK_PUBLIC_KEY`
 - `PAYSTACK_SECRET_KEY`
 - `MAIL_PROVIDER` (`sendgrid` or `resend`)
-- `MAIL_FROM`
+- `SENDGRID_FROM_EMAIL` (optional; defaults to `reports@giscopo.ossaiku.tech`)
 - `SENDGRID_API_KEY` (when `MAIL_PROVIDER=sendgrid`)
 - `RESEND_API_KEY` (when `MAIL_PROVIDER=resend`)
 - `MAPBOX_ACCESS_TOKEN` (optional satellite imagery fallback)
