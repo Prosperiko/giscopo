@@ -92,8 +92,33 @@ class JobStatus(BaseModel):
 
 JOB_STATE: dict[str, JobStatus] = {}
 
-PROCESSED_REFS: set[str] = set()
 
+
+
+
+
+
+
+import json
+from pathlib import Path
+
+
+
+REFS_FILE = Path("processed_refs.json")
+
+def _load_processed_refs() -> set[str]:
+    if REFS_FILE.exists():
+        return set(json.loads(REFS_FILE.read_text()))
+    return set()
+
+def _save_processed_refs(refs: set[str]) -> None:
+    REFS_FILE.write_text(json.dumps(list(refs)))
+    
+PROCESSED_REFS = _load_processed_refs()
+
+    
+    
+    
 def _set_job_state(job_id: str, status: str, message: str) -> None:
     JOB_STATE[job_id] = JobStatus(
         status=status,
@@ -198,6 +223,9 @@ def _process_report(job_id: str, request: ReportRequest) -> None:
         )
 
         _set_job_state(job_id, "processing", "Sending report email")
+        logger.info("About to send email to %s via provider %s", 
+                    request.email, 
+                    os.getenv("MAIL_PROVIDER", "NOT SET"))
         send_report_email(
             EmailPayload(
                 recipient=request.email,
@@ -303,6 +331,7 @@ def generate_report(payload: ReportRequest) -> dict[str, str]:
             logger.info("Email mismatch noted: Paid with %s, delivering to %s", paid_email, payload.email)
 
     PROCESSED_REFS.add(payload.payment_reference)
+    _save_processed_refs(PROCESSED_REFS)
 
     job_id = str(uuid.uuid4())
     _set_job_state(job_id, "queued", "Report request accepted")

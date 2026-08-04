@@ -329,6 +329,17 @@ def _send_with_resend(payload: EmailPayload, max_retries: int = 3) -> None:
                     error_msg = response.text
                 raise MailerError(f"Resend failed with status code {response.status_code}. Details: {error_msg}")
                 
+                
+            
+            if response.status_code >= 300:
+                try:
+                    error_msg = response.json()
+                except Exception:
+                    error_msg = response.text
+                    # Log the FULL error so you can see it in Render logs
+                    logging.error("RESEND ERROR: status=%s body=%s", response.status_code, error_msg)
+                    
+                    raise MailerError(f"Resend failed: {error_msg}")
             # If it's a 408 (Timeout) or 500+ (Server Error), raise an error to trigger the retry block
             response.raise_for_status()
 
@@ -342,6 +353,12 @@ def _send_with_resend(payload: EmailPayload, max_retries: int = 3) -> None:
             else:
                 # Give up after max_retries tries and crash gracefully
                 raise MailerError(f"Resend failed after {max_retries} attempts. Last error: {e}") from e
+            
+        except Exception:
+            error_msg = response.text
+            # Log the FULL error so you can see it in Render logs
+            logging.error("RESEND ERROR: status=%s body=%s", response.status_code, error_msg)
+            raise MailerError(f"Resend failed: {error_msg}")
 
 def send_report_email(payload: EmailPayload) -> None:
     provider = os.getenv("MAIL_PROVIDER", "sendgrid").strip().lower()
