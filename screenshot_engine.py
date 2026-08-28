@@ -27,6 +27,7 @@ load_dotenv(override=True)
 class ScreenshotEngineError(RuntimeError):
     pass
 
+# Do not delete this man JIC it doesn't work
 # def _parse_location(location: str) -> tuple[float, float]:
 #     # 1. Check if the user just pasted raw coordinates (lat, lng)
 #     coord_pattern = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
@@ -178,7 +179,7 @@ class ScreenshotEngineError(RuntimeError):
 
 
 def _parse_location(location: str) -> tuple[float, float]:
-    # 1. Raw coordinates bypass everything
+    # 1. Raw coordinates just to bypass everything
     coord_pattern = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
     match = coord_pattern.match(location)
     if match:
@@ -187,7 +188,7 @@ def _parse_location(location: str) -> tuple[float, float]:
             raise ScreenshotEngineError("Coordinates out of valid range")
         return lat, lng
 
-    # 2. KNOWN LOCATIONS — exact coordinates, zero API calls, never fails
+    # 2. KNOWN LOCATIONS — exact coordinates, zero API calls, never fails (OGA standby)
     # Add every common location your users search for here
     known = {
         # UNIBEN
@@ -285,73 +286,6 @@ def _parse_location(location: str) -> tuple[float, float]:
 
 
 
-# def _capture_google_earth(lat: float, lng: float, out_path: str) -> bool:
-#     import asyncio
-#     import sys
-#     if sys.platform == "win32":
-#         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-#     # 800d = 800 meters camera distance (Perfect zoom level for buildings)
-#     # 0h, 0t, 0r = North-up, top-down 2D view (No weird 3D tilting)
-#     earth_url = f"https://earth.google.com/web/@{lat},{lng},800d,0h,0t,0r"
-
-#     try:
-#         from playwright.sync_api import sync_playwright
-#         with sync_playwright() as playwright:
-#             # Force WebGL software rendering so it works on headless servers without GPUs
-#             browser = playwright.chromium.launch(
-#                 headless=True,
-#                 args=[
-#                     "--ignore-gpu-blocklist", 
-#                     "--enable-webgl",
-#                     "--use-gl=swiftshader",
-#                     "--disable-blink-features=AutomationControlled"
-#                 ]
-#             )
-            
-#             context = browser.new_context(
-#                 viewport={"width": 1280, "height": 720},
-#                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-#                 locale="en-US"
-#             )
-            
-#             page = context.new_page()
-#             page.goto(earth_url, wait_until="domcontentloaded", timeout=90000)
-            
-#             # Google Earth takes time to run its "fly-to" animation and load high-res textures.
-#             # We give it a generous 15 seconds to settle.
-#             page.wait_for_timeout(15000)
-            
-#             # THE MAGIC TRICK: Find the WebGL canvas and force it to cover the entire screen,
-#             # hiding all menus, toolbars, and search bars behind it!
-#             page.evaluate("""
-#                 let canvas = document.querySelector('canvas');
-#                 if (!canvas) {
-#                     const earthApp = document.querySelector('earth-app');
-#                     if (earthApp && earthApp.shadowRoot) {
-#                         canvas = earthApp.shadowRoot.querySelector('canvas');
-#                     }
-#                 }
-#                 if (canvas) {
-#                     canvas.style.position = 'fixed';
-#                     canvas.style.top = '0';
-#                     canvas.style.left = '0';
-#                     canvas.style.width = '100vw';
-#                     canvas.style.height = '100vh';
-#                     canvas.style.zIndex = '999999';
-#                 }
-#             """)
-            
-#             # Wait 2 more seconds for the UI to vanish cleanly
-#             page.wait_for_timeout(2000)
-            
-#             page.screenshot(path=out_path, full_page=False)
-#             browser.close()
-#             return True
-#     except Exception as exc:
-#         print(f"Google Earth capture failed: {exc}")
-#         return False
-
 
 import ee
 import requests
@@ -359,8 +293,8 @@ import io
 from PIL import Image
 
 def init_earth_engine():
-    # If using a service account, you would authenticate here.
-    # For local testing, you might need to run `earthengine authenticate` in your terminal first.
+    # If using a service account, you should authenticate here.
+    # For local testing, just run `earthengine authenticate` in my  terminal first.
     try:
         ee.Initialize()
     except Exception as e:
@@ -370,57 +304,6 @@ def init_earth_engine():
 
 
 
-# def _capture_google_earth(lat: float, lng: float, out_path: str, buffer_degrees: float = 0.005) -> bool:
-#     """
-#     Fetches a high-resolution satellite composite from Google Earth Engine.
-#     """
-#     if not init_earth_engine():
-#         return False
-        
-#     try:
-#         # Define the bounding box for the image around your coordinate
-#         region = ee.Geometry.BBox(
-#             lng - buffer_degrees, lat - buffer_degrees, 
-#             lng + buffer_degrees, lat + buffer_degrees
-#         )
-
-#         # Sentinel-2 provides excellent, frequently updated satellite imagery
-#         # We filter for a recent time period and minimal cloud cover
-#         dataset = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-#                   .filterBounds(region) \
-#                   .filterDate('2023-01-01', '2024-01-01') \
-#                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10))
-
-#         # Take the median of the filtered images to get a clear composite
-#         image = dataset.median()
-
-#         # Select the Red, Green, and Blue bands for a true-color image
-#         # Note: Sentinel-2 bands for RGB are B4, B3, B2.
-#         # We scale the visualization parameters to make the image look natural.
-#         vis_params = {
-#             'bands': ['B4', 'B3', 'B2'],
-#             'min': 0,
-#             'max': 3000, 
-#             'region': region,
-#             'scale': 10, # Sentinel-2 has a 10m resolution per pixel
-#             'format': 'png'
-#         }
-
-#         # Request a direct download URL for the thumbnail image
-#         url = image.getThumbURL(vis_params)
-        
-#         # Download the image buffer
-#         response = requests.get(url, timeout=30)
-#         response.raise_for_status()
-        
-#         # Save it using Pillow to ensure it's a valid image file
-#         img = Image.open(io.BytesIO(response.content))
-#         img.save(out_path, format="PNG", optimize=True)
-#         return True
-
-#     except Exception as e:
-#         print(f"GEE API Request Failed: {e}")
-#         return False
 
 
 import math
